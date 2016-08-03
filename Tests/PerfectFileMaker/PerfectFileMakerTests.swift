@@ -140,7 +140,24 @@ class PerfectFileMakerTests: XCTestCase {
 			
 		}
 	}
+	
+	func testQueryFindAll() {
+		let query = FMPQuery(database: sampleDB, layout: "Task Details", action: .findAll)
+		let expect = self.expectation(description: "done")
+		let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
 		
+		fms.query(query) {
+			result in
+			
+			expect.fulfill()
+		}
+		
+		self.waitForExpectations(timeout: 60.0) {
+			_ in
+			
+		}
+	}
+	
     static var allTests : [(String, (PerfectFileMakerTests) -> () throws -> Void)] {
 		return [
 			("testDatabaseNames", testDatabaseNames),

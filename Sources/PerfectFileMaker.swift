@@ -1,120 +1,63 @@
+//
+//  PostgreFileMaker.swift
+//  PostgreFileMaker
+//
+//  Created by Kyle Jessup on 2016-08-02.
+//	Copyright (C) 2016 PerfectlySoft, Inc.
+//
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Perfect.org open source project
+//
+// Copyright (c) 2015 - 2016 PerfectlySoft Inc. and the Perfect project authors
+// Licensed under Apache License v2.0
+//
+// See http://perfect.org/licensing.html for license information
+//
+//===----------------------------------------------------------------------===//
+//
 
 import PerfectLib
 import PerfectXML
 import PerfectCURL
 import cURL
 
-public enum FMSGrammar: String {
-	case fmResultSet = "fmresultset"
+public enum FMPGrammar: String {
+	//	case fmResultSet = "fmresultset"
 	case fmpXMLLayout = "FMPXMLLAYOUT"
 	case fmpXMLResult = "FMPXMLRESULT"
 }
 
-public struct FMPLayoutField {
-	public let name: String
-	public let type: String
-	public let valueList: String?
-}
+let fmrs = "fmrs"
+let fmrsNamespaces = [(fmrs, "http://www.filemaker.com/xml/fmresultset")]
+let fmrsErrorCode = "/\(fmrs):fmresultset/\(fmrs):error/@code"
+let fmrsResultSet = "/\(fmrs):fmresultset/\(fmrs):resultset"
+let fmrsRecord = "\(fmrs):record"
+let fmrsField = "\(fmrs):field"
+let fmrsData = "\(fmrs):data/text()"
 
-public struct FMPValueListItem {
-	public let display: String
-	public let value: String
-}
+let fmpxl = "fmpxl"
+let fmpxlNamespaces = [(fmpxl, "http://www.filemaker.com/fmpxmllayout")]
+let fmpxlErrorCode = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):ERRORCODE/text()"
+let fmpxlField = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):LAYOUT/\(fmpxl):FIELD"
+let fmpxlStyle = "\(fmpxl):STYLE"
+let fmpxlValueLists = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):VALUELISTS/\(fmpxl):VALUELIST"
+let fmpxlValue = "\(fmpxl):VALUE"
 
-public struct FMPLayoutInfo {
-	public let fields: [FMPLayoutField]
-	public let valueLists: [String:[FMPValueListItem]]
-}
+let fmpxr = "fmpxr"
+let fmpxrNamespaces = [(fmpxr, "http://www.filemaker.com/fmpxmlresult")]
+let fmpxrErrorCode = "/\(fmpxr):FMPXMLRESULT/\(fmpxr):ERRORCODE/text()"
+let fmpxrDatabase = "/\(fmpxr):FMPXMLRESULT/\(fmpxr):DATABASE"
+let fmpxrField = "/\(fmpxr):FMPXMLRESULT/\(fmpxr):METADATA/\(fmpxr):FIELD"
+let fmpxrRow = "/\(fmpxr):FMPXMLRESULT/\(fmpxr):RESULTSET/\(fmpxr):ROW"
+let fmpxrCol = "\(fmpxr):COL"
+let fmpxrData = "\(fmpxr):DATA"
 
-public enum FMSResult {
+public enum FMPResult {
 	case error(Int, String)
-	case resultSet([[String:String]])
+	case resultSet(FMPResultSet)
 	case layoutInfo(FMPLayoutInfo)
 }
-
-public enum FMPAction {
-	case find, findAll, findAny
-	case new, edit, delete, duplicate
-	case scripts
-}
-
-public enum FMPSortOrder {
-	case ascending, descending, custom
-}
-
-public enum FMPLogicalOp {
-	case and, or, not
-}
-
-public enum FMPFieldOp {
-	case equal, contains, beginsWith, endsWith, greaterThan, greaterThanEqual, lessThan, lessThanEqual, notEqual
-}
-
-public struct FMPQueryField {
-	public let name: String
-	public let value: Any
-	public let op: FMPFieldOp
-	
-	public init(name: String, value: Any, op: FMPFieldOp) {
-		self.name = name
-		self.value = value
-		self.op = op
-	}
-	
-	public init(name: String, value: Any) {
-		self.init(name: name, value: value, op: .beginsWith)
-	}
-}
-
-public struct FMPQueryFieldGroup {
-	public let op: FMPLogicalOp
-	public let fields: [FMPQueryField]
-	
-	public init(op: FMPLogicalOp, fields: [FMPQueryField]) {
-		self.op = op
-		self.fields = fields
-	}
-	
-	public init(fields: [FMPQueryField]) {
-		self.init(op: .and, fields: fields)
-	}
-}
-
-public struct FMPSortField {
-	public let name: String
-	public let order: FMPSortOrder
-	
-	public init(name: String, order: FMPSortOrder) {
-		self.name = name
-		self.order = order
-	}
-	
-	public init(name: String) {
-		self.init(name: name, order: .ascending)
-	}
-}
-
-public struct FMPQuery {
-	let queryFields: [FMPQueryFieldGroup]
-	let sortFields: [FMPSortField]
-	
-}
-
-private let fmrs = "fmrs"
-private let fmrsNamespaces = [(fmrs, "http://www.filemaker.com/xml/fmresultset")]
-private let fmrsErrorCode = "/\(fmrs):fmresultset/\(fmrs):error/@code"
-private let fmrsResultSet = "/\(fmrs):fmresultset/\(fmrs):resultset"
-private let fmrsRecord = "\(fmrs):record"
-private let fmrsField = "\(fmrs):field"
-private let fmrsData = "\(fmrs):data/text()"
-
-private let fmpxl = "fmpxl"
-private let fmpxlNamespaces = [(fmpxl, "http://www.filemaker.com/fmpxmllayout")]
-private let fmpxlErrorCode = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):ERRORCODE/text()"
-private let fmpxlField = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):LAYOUT/\(fmpxl):FIELD"
-private let fmpxlStyle = "\(fmpxl):STYLE"
-private let fmpxlValueLists = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):VALUELISTS/\(fmpxl):VALUELIST"
-private let fmpxlValue = "\(fmpxl):VALUE"
 
 public struct FileMakerServer {
 	let host: String
@@ -122,7 +65,7 @@ public struct FileMakerServer {
 	let userName: String
 	let password: String
 	
-	func makeUrl(query: String, grammar: FMSGrammar) -> String {
+	func makeUrl(query: String, grammar: FMPGrammar) -> String {
 		let scheme = port == 443 ? "https" : "http"
 		let url = "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml?\(query)"
 		return url
@@ -168,7 +111,7 @@ public struct FileMakerServer {
 		return recordsArray
 	}
 	
-	func performRequest(query: String, grammar: FMSGrammar, callback: (FMSResult) -> ()) {
+	func performRequest(query: String, grammar: FMPGrammar, callback: (FMPResult) -> ()) {
 		let curl = makeCURL(url: makeUrl(query: query, grammar: grammar))
 		curl.perform {
 			code, header, body in
@@ -182,7 +125,7 @@ public struct FileMakerServer {
 			switch grammar {
 			case .fmpXMLLayout: self.processGrammar_FMPXMLLayout(doc: doc, callback: callback)
 			case .fmpXMLResult: self.processGrammar_FMPXMLResult(doc: doc, callback: callback)
-			case .fmResultSet: self.processGrammar_FMResultSet(doc: doc, callback: callback)
+//			case .fmResultSet: self.processGrammar_FMResultSet(doc: doc, callback: callback)
 			}
 		}
 	}
@@ -196,19 +139,19 @@ public struct FileMakerServer {
 		return errorCode
 	}
 	
-	func processGrammar_FMResultSet(doc: XDocument, callback: (FMSResult) -> ()) {
-		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
-		guard errorCode == 0 else {
-			return callback(.error(errorCode, "Error from FileMaker server"))
-		}
-		guard let resultSet = doc.extractOne(path: fmrsResultSet, namespaces: fmrsNamespaces) else {
-			return callback(.error(500, "Bad response"))
-		}
-		let recordsArray = self.pullRecords(resultSet: resultSet)
-		callback(.resultSet(recordsArray))
-	}
+//	func processGrammar_FMResultSet(doc: XDocument, callback: (FMPResult) -> ()) {
+//		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
+//		guard errorCode == 0 else {
+//			return callback(.error(errorCode, "Error from FileMaker server"))
+//		}
+//		guard let resultSet = doc.extractOne(path: fmrsResultSet, namespaces: fmrsNamespaces) else {
+//			return callback(.error(500, "Bad response"))
+//		}
+//		let recordsArray = self.pullRecords(resultSet: resultSet)
+//		callback(.resultSet(recordsArray))
+//	}
 	
-	func processGrammar_FMPXMLLayout(doc: XDocument, callback: (FMSResult) -> ()) {
+	func processGrammar_FMPXMLLayout(doc: XDocument, callback: (FMPResult) -> ()) {
 		let errorCode = checkError(doc: doc, xpath: fmpxlErrorCode, namespaces: fmpxlNamespaces)
 		guard errorCode == 0 else {
 			return callback(.error(errorCode, "Error from FileMaker server"))
@@ -217,7 +160,7 @@ public struct FileMakerServer {
 			return callback(.error(500, "Bad response"))
 		}
 		
-		var fields = [FMPLayoutField]()
+		var fields = [FMPFieldInfo]()
 		for field in fieldList {
 			guard let field = field as? XElement else {
 				continue
@@ -228,7 +171,7 @@ public struct FileMakerServer {
 			let style = field.extractOne(path: fmpxlStyle, namespaces: fmpxlNamespaces) as? XElement
 			let type = style?.getAttribute(name: "TYPE") ?? ""
 			let valueList = style?.getAttribute(name: "VALUELIST") ?? ""
-			fields.append(FMPLayoutField(name: name, type: type, valueList: valueList.isEmpty ? nil : valueList))
+			fields.append(FMPFieldInfo(name: name, type: type, valueList: valueList.isEmpty ? nil : valueList))
 		}
 		
 		var valueLists = [String:[FMPValueListItem]]()
@@ -260,20 +203,30 @@ public struct FileMakerServer {
 		callback(.layoutInfo(FMPLayoutInfo(fields: fields, valueLists: valueLists)))
 	}
 	
-	func processGrammar_FMPXMLResult(doc: XDocument, callback: (FMSResult) -> ()) {
+	func processGrammar_FMPXMLResult(doc: XDocument, callback: (FMPResult) -> ()) {
+		let errorCode = checkError(doc: doc, xpath: fmpxrErrorCode, namespaces: fmpxrNamespaces)
+		guard errorCode == 0 else {
+			return callback(.error(errorCode, "Error from FileMaker server"))
+		}
 		
 	}
 	
-	public func databaseNames(completion: (FMSResult) -> ()) {
-		performRequest(query: "-dbnames", grammar: .fmResultSet, callback: completion)
+	public func databaseNames(completion: (FMPResult) -> ()) {
+		performRequest(query: "-dbnames", grammar: .fmpXMLResult, callback: completion)
 	}
 	
-	public func layoutNames(database: String, completion: (FMSResult) -> ()) {
-		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet, callback: completion)
+	public func layoutNames(database: String, completion: (FMPResult) -> ()) {
+		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmpXMLResult, callback: completion)
 	}
 	
-	public func layoutInfo(database: String, layout: String, completion: (FMSResult) -> ()) {
+	public func layoutInfo(database: String, layout: String, completion: (FMPResult) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmpXMLLayout, callback: completion)
+	}
+	
+	public func query(_ query: FMPQuery, completion: (FMPResult) -> ()) {
+		let queryString = query.queryString
+		print(queryString)
+		performRequest(query: queryString, grammar: .fmpXMLResult, callback: completion)
 	}
 }
 
