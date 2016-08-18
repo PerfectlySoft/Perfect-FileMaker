@@ -119,7 +119,7 @@ public struct FMPSortField {
 }
 
 public let fmpNoRecordId = -1
-public let fmpAllRecords = 0
+public let fmpAllRecords = -1
 
 public struct FMPQuery: CustomStringConvertible {
 	

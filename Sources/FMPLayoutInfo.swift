@@ -65,34 +65,33 @@ public enum FMPMetaDataItem {
 
 public struct FMPLayoutInfo {
 	public let fields: [FMPMetaDataItem]
+	public let fieldsByName: [String:FMPFieldType]
 	
-	var flattenedTypes: [String:FMPFieldType] {
-		let flattened = soFlat(fields: fields)
+	init(node: XElement) {
+		self.fields = node.childElements.map { FMPMetaDataItem(node: $0) }
+		
+		func flattenOne(item: FMPMetaDataItem) -> [(String, FMPFieldType)] {
+			switch item {
+			case .fieldDefinition(let def):
+				return [(def.name, def.type)]
+			case .relatedSetDefinition(let table, let fields):
+				return soFlat(prefix: table, fields: fields)
+			}
+		}
+		
+		func soFlat(fields: [FMPMetaDataItem]) -> [(String, FMPFieldType)] {
+			return fields.flatMap { flattenOne(item: $0) }
+		}
+		
+		func soFlat(prefix: String,  fields: [FMPFieldDefinition]) -> [(String, FMPFieldType)] {
+			return fields.map { ($0.name, $0.type) }
+		}
+		
+		let flattened = soFlat(fields: self.fields)
 		var ret = [String:FMPFieldType]()
 		for (n, v) in flattened {
 			ret[n] = v
 		}
-		return ret
-	}
-	
-	func flattenOne(item: FMPMetaDataItem) -> [(String, FMPFieldType)] {
-		switch item {
-		case .fieldDefinition(let def):
-			return [(def.name, def.type)]
-		case .relatedSetDefinition(let table, let fields):
-			return soFlat(prefix: table, fields: fields)
-		}
-	}
-	
-	func soFlat(fields: [FMPMetaDataItem]) -> [(String, FMPFieldType)] {
-		return fields.flatMap { self.flattenOne(item: $0) }
-	}
-	
-	func soFlat(prefix: String,  fields: [FMPFieldDefinition]) -> [(String, FMPFieldType)] {
-		return fields.map { ($0.name, $0.type) }
-	}
-	
-	init(node: XElement) {
-		self.fields = node.childElements.map { FMPMetaDataItem(node: $0) }
+		self.fieldsByName = ret
 	}
 }

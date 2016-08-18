@@ -97,15 +97,10 @@ public struct FileMakerServer {
 				return callback(.error(500, "Bad response"))
 			}
 			switch grammar {
-//			case .fmpXMLLayout: self.processGrammar_FMPXMLLayout(doc: doc, callback: callback)
 			case .fmResultSet: self.processGrammar_FMPResultSet(doc: doc, callback: callback)
 			}
 		}
 	}
-	
-//	func processGrammar_FMPXMLLayout(doc: XDocument, callback: (FMPResult) -> ()) {
-//		
-//	}
 	
 	func processGrammar_FMPResultSet(doc: XDocument, callback: (FMPResult) -> ()) {
 		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
@@ -126,9 +121,15 @@ public struct FileMakerServer {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet, callback: completion)
 	}
 	
-//	public func layoutInfo(database: String, layout: String, completion: @escaping (FMPResult) -> ()) {
-//		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmpXMLLayout, callback: completion)
-//	}
+	public func layoutInfo(database: String, layout: String, completion: @escaping (FMPResult) -> ()) {
+		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmResultSet) {
+			result in
+			guard case .resultSet(let set) = result else {
+				return completion(result)
+			}
+			return completion(.layoutInfo(set.layoutInfo))
+		}
+	}
 	
 	public func query(_ query: FMPQuery, skipValueLists: Bool = false, completion: @escaping (FMPResult) -> ()) {
 		let queryString = query.queryString

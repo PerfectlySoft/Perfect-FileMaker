@@ -26,7 +26,7 @@ let fmrsResultSet = "/\(fmrs):fmresultset/\(fmrs):resultset"
 let fmrsMetaData = "/\(fmrs):fmresultset/\(fmrs):metadata"
 let fmrsDataSource = "/\(fmrs):fmresultset/\(fmrs):datasource"
 let fmrsFieldDefinition = "field-definition"
-internal let fmrsRelatedSetDefinition = "relatedset-definition"
+let fmrsRelatedSetDefinition = "relatedset-definition"
 
 let fmrsRecord = "record"
 let fmrsField = "field"
@@ -165,7 +165,7 @@ public struct FMPResultSet {
 		self.databaseInfo = FMPDatabaseInfo(node: databaseNode)
 		self.layoutInfo = FMPLayoutInfo(node: metaDataNode)
 		self.foundCount = Int(resultSetNode.getAttribute(name: "count") ?? "") ?? 0
-		let fieldTypes = self.layoutInfo.flattenedTypes
+		let fieldTypes = self.layoutInfo.fieldsByName
 		self.records = resultSetNode.childElements.map { FMPRecord(node: $0, fieldTypes: fieldTypes) }
 	}
 }
