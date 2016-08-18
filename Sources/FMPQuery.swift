@@ -17,6 +17,8 @@
 //===----------------------------------------------------------------------===//
 //
 
+import PerfectLib
+
 public enum FMPAction: CustomStringConvertible {
 	case find, findAll, findAny
 	case new, edit, delete, duplicate
@@ -96,7 +98,8 @@ public struct FMPQueryFieldGroup {
 	
 	var simpleFieldsString: String {
 		return fields.map {
-			"\($0.name.stringByEncodingURL)=\(String($0.value).stringByEncodingURL)"
+			let vstr = "\($0.value)"
+			return "\($0.name.stringByEncodingURL)=\(vstr.stringByEncodingURL)"
 		}.joined(separator: "&")
 	}
 }
@@ -362,44 +365,32 @@ public struct FMPQuery: CustomStringConvertible {
 	}
 	
 	public var queryString: String {
-		
+		let starter = dbLayString +
+			maybeAmp(scriptsString) +
+			maybeAmp(responseLayoutString)
 		switch action {
 		case .delete, .duplicate:
-			return dbLayString +
-				maybeAmp(scriptsString) +
-				maybeAmp(responseLayoutString) +
+			return starter +
 				maybeAmp(recidString) + actionString
 		case .edit:
-			return dbLayString +
-				maybeAmp(scriptsString) +
+			return starter +
 				maybeAmp(recidString) +
-				maybeAmp(responseLayoutString) +
 				maybeAmp(simpleFieldsString) + actionString
 		case .new:
-			return dbLayString +
-				maybeAmp(scriptsString) +
-				maybeAmp(responseLayoutString) +
+			return starter +
 				maybeAmp(simpleFieldsString) + actionString
 		case .findAny:
-			return dbLayString +
-				maybeAmp(scriptsString) +
-				maybeAmp(responseLayoutString) + actionString
+			return starter + actionString
 		case .findAll:
-			return dbLayString +
-				maybeAmp(scriptsString) +
-				maybeAmp(responseLayoutString) +
+			return starter +
 				maybeAmp(sortFieldsString) +
 				maybeAmp(maxSkipString) + actionString
 		case .find:
 			if recordId != fmpNoRecordId {
-				return dbLayString +
-					maybeAmp(scriptsString) +
-					maybeAmp(responseLayoutString) +
+				return starter +
 					maybeAmp(recidString) + "-find"
 			}
-			return dbLayString +
-				maybeAmp(scriptsString) +
-				maybeAmp(responseLayoutString) +
+			return starter +
 				maybeAmp(sortFieldsString) +
 				maybeAmp(maxSkipString) +
 				maybeAmp(compoundQueryString) +

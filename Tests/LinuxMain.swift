@@ -1,5 +1,5 @@
 import XCTest
-@testable import PerfectFileMakerTestSuite
+@testable import PerfectFileMakerTests
 
 XCTMain([
      testCase(PerfectFileMakerTests.allTests),

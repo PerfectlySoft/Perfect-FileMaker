@@ -26,8 +26,6 @@ let package = Package(
 		.Package(url: "https://github.com/PerfectlySoft/Perfect-XML.git",
 		         versions: Version(0,0,0)..<Version(10,0,0)),
 		.Package(url: "https://github.com/PerfectlySoft/Perfect-CURL.git",
-		         versions: Version(0,0,0)..<Version(10,0,0)),
-		.Package(url: "https://github.com/PerfectlySoft/PerfectLib.git",
 		         versions: Version(0,0,0)..<Version(10,0,0))
 	],
 	exclude: []

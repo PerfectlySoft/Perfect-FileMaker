@@ -19,145 +19,157 @@
 
 import PerfectXML
 
-public struct FMPFieldInfo {
-	public let name: String
-	public let type: String
-	public let valueList: String?
-}
+let fmrs = "fmrs"
+let fmrsNamespaces = [(fmrs, "http://www.filemaker.com/xml/fmresultset")]
+let fmrsErrorCode = "/\(fmrs):fmresultset/\(fmrs):error/@code"
+let fmrsResultSet = "/\(fmrs):fmresultset/\(fmrs):resultset"
+let fmrsMetaData = "/\(fmrs):fmresultset/\(fmrs):metadata"
+let fmrsDataSource = "/\(fmrs):fmresultset/\(fmrs):datasource"
+let fmrsFieldDefinition = "field-definition"
+internal let fmrsRelatedSetDefinition = "relatedset-definition"
 
-public struct FMPValueListItem {
-	public let display: String
-	public let value: String
+let fmrsRecord = "record"
+let fmrsField = "field"
+let fmrsRelatedSet = "relatedset"
+
+let fmrsData = "\(fmrs):data/text()"
+
+public enum FMPFieldValue: CustomStringConvertible {
+	case text(String), number(Double), container(String),
+		date(String), time(String), timestamp(String)
+	
+	init(value: String, type: FMPFieldType) {
+		switch type {
+		case .number:
+			self = .number(Double(value) ?? 0.0)
+		case .container:
+			self = .container(value)
+		case .date:
+			self = .date(value)
+		case .time:
+			self = .time(value)
+		case .timestamp:
+			self = .timestamp(value)
+		case .text:
+			self = .text(value)
+		}
+	}
+	
+	public var description: String {
+		switch self {
+		case .text(let s): return s
+		case .number(let s): return String(s)
+		case .container(let s): return s
+		case .date(let s): return s
+		case .time(let s): return s
+		case .timestamp(let s): return s
+		}
+	}
 }
 
 public struct FMPDatabaseInfo {
 	public let dateFormat: String
 	public let timeFormat: String
+	public let timeStampFormat: String
 	public let recordCount: Int
-}
-
-public struct FMPLayoutInfo {
-	public let fields: [FMPFieldInfo]
-	public let valueLists: [String:[FMPValueListItem]]
-}
-
-public struct FMPFieldData {
-	public enum FieldType: CustomStringConvertible {
-		case text(String), number(Double), container(String), date(String)
-		
-		init(value: String, type: String) {
-			switch type {
-			case "NUMBER":
-				self = .number(Double(value) ?? 0.0)
-			case "CONTAINER":
-				self = .container(value)
-			case "DATE":
-				self = .date(value)
-			default:
-				self = .text(value)
-			}
-		}
-		
-		public var description: String {
-			switch self {
-			case .text(let s): return s
-			case .number(let s): return String(s)
-			case .container(let s): return s
-			case .date(let s): return s
-			}
-		}
-	}
-	public let values: [FieldType]
-	public var value: FieldType {
-		guard let first = self.values.first else {
-			return .text("")
-		}
-		return first
-	}
 	
-	init(colElement: XElement, info: FMPFieldInfo) {
-		guard case .nodeSet(let datas) = colElement.extract(path: fmpxrData, namespaces: fmpxrNamespaces) else {
-			self.values = [FieldType]()
-			return
-		}
-		self.values = datas.map { FieldType(value: $0.nodeValue ?? "", type: info.type) }
+	init(node: XElement) {
+		dateFormat = node.getAttribute(name: "date-format") ?? "MM/dd/yyyy"
+		timeFormat = node.getAttribute(name: "time-format") ?? "HH:mm:ss"
+		timeStampFormat = node.getAttribute(name: "timestamp-format") ?? "MM/dd/yyyy HH:mm:ss"
+		recordCount = Int(node.getAttribute(name: "total-count") ?? "0") ?? 0
 	}
 }
 
 public struct FMPRecord {
-	public let recordId: Int
-	public let fields: [FMPFieldData]
+	public enum RecordItem {
+		case field(String, FMPFieldValue)
+		case relatedSet(String, [FMPRecord])
+		
+		init(node: XElement, fieldTypes: [String:FMPFieldType]) {
+			let name: String
+			if node.nodeName == fmrsField {
+				name = node.getAttribute(name: "name") ?? ""
+			} else {
+				name = node.getAttribute(name: "table") ?? ""
+			}
+			let type = fieldTypes[name] ?? .text
+			if node.nodeName == fmrsField {
+				let data = node.getElementsByTagName("data").first
+				self = .field(name, FMPFieldValue(value: data?.nodeValue ?? "", type: type))
+			} else {
+				self = .relatedSet(name, node.childElements.map { FMPRecord(node: $0, fieldTypes: fieldTypes) })
+			}
+		}
+		
+		// this can only be field
+		init(setName: String, node: XElement, fieldTypes: [String:FMPFieldType]) {
+			let name = node.getAttribute(name: "name") ?? ""
+			let type = fieldTypes[setName + "::" + name] ?? .text
+			let data = node.getElementsByTagName("data").first
+			self = .field(name, FMPFieldValue(value: data?.nodeValue ?? "", type: type))
+		}
+	}
 	
-	init(rowElement: XElement, fieldInfos: [FMPFieldInfo]) {
-		self.recordId = Int(rowElement.getAttribute(name: "RECORDID") ?? "0") ?? 0
-		guard case .nodeSet(let cols) = rowElement.extract(path: fmpxrCol, namespaces: fmpxrNamespaces) else {
-			self.fields = [FMPFieldData]()
-			return
+	public let recordId: Int
+	public let elements: [String:RecordItem]
+	
+	init(node: XElement, fieldTypes: [String:FMPFieldType]) {
+		self.recordId = Int(node.getAttribute(name: "record-id") ?? "-1") ?? -1
+		var elements = [String:RecordItem]()
+		for e in node.childElements {
+			let item = RecordItem(node: e, fieldTypes: fieldTypes)
+			let name: String
+			switch item {
+			case .field(let n, _):
+				name = n
+			case .relatedSet(let n, _):
+				name = n
+			}
+			elements[name] = item
 		}
-		let columns = cols.flatMap { (node:XNode) -> XElement? in return node as? XElement }
-		guard columns.count == fieldInfos.count else {
-			self.fields = [FMPFieldData]()
-			return
+		self.elements = elements
+	}
+	
+	init(setName: String, node: XElement, fieldTypes: [String:FMPFieldType]) {
+		self.recordId = Int(node.getAttribute(name: "record-id") ?? "-1") ?? -1
+		var elements = [String:RecordItem]()
+		for e in node.childElements {
+			let item = RecordItem(setName: setName, node: e, fieldTypes: fieldTypes)
+			let name: String
+			switch item {
+			case .field(let n, _):
+				name = n
+			case .relatedSet(let n, _): // inconceivable!
+				name = n
+			}
+			elements[name] = item
 		}
-		self.fields = zip(columns, fieldInfos).map { FMPFieldData(colElement: $0.0, info: $0.1) }
+		self.elements = elements
 	}
 }
 
 public struct FMPResultSet {
 	public let databaseInfo: FMPDatabaseInfo
 	public let layoutInfo: FMPLayoutInfo
+	public let foundCount: Int
 	public let records: [FMPRecord]
 	
-	public var recordCount: Int {
-		return records.count
-	}
-	
-	init(doc: XDocument, layoutInfo: FMPLayoutInfo?) {
-		let databaseNode = doc.extractOne(path: fmpxrDatabase, namespaces: fmpxrNamespaces) as? XElement
-		self.databaseInfo = FMPDatabaseInfo(dateFormat: databaseNode?.getAttribute(name: "DATEFORMAT") ?? "MM/DD/YYYY",
-		                               timeFormat: databaseNode?.getAttribute(name: "TIMEFORMAT") ?? "HH:mm:ss",
-		                               recordCount: Int(databaseNode?.getAttribute(name: "RECORDS") ?? "0") ?? 0)
-		
-		guard case .nodeSet(let fields) = doc.extract(path: fmpxrField, namespaces: fmpxrNamespaces) else {
-			self.records = [FMPRecord]()
-			self.layoutInfo = FMPLayoutInfo(fields: [FMPFieldInfo](), valueLists: [String : [FMPValueListItem]]())
-			return
+	init?(doc: XDocument) {
+		guard let databaseNode = doc.extractOne(path: fmrsDataSource, namespaces: fmrsNamespaces) as? XElement,
+			let metaDataNode = doc.extractOne(path: fmrsMetaData, namespaces: fmrsNamespaces) as? XElement,
+			let resultSetNode = doc.extractOne(path: fmrsResultSet, namespaces: fmrsNamespaces) as? XElement else {
+			return nil
 		}
 		
-		let fieldInfos: [FMPFieldInfo] = fields.flatMap { (node:XNode) -> XElement? in
-				return node as? XElement
-			}.flatMap {
-				guard let fieldName = $0.getAttribute(name: "NAME"),
-					let fieldType = $0.getAttribute(name: "TYPE") else {
-						return nil
-				}
-				return FMPFieldInfo(name: fieldName, type: fieldType, valueList: nil)
-			}
-		
-		if let preLay = layoutInfo {
-			// have to order these so they match the field ordering in this result set
-			// they do not normally match
-			var dict = [String:FMPFieldInfo]()
-			for info in preLay.fields {
-				dict[info.name] = info
-			}
-			self.layoutInfo = FMPLayoutInfo(fields: fieldInfos.flatMap { dict[$0.name] }, valueLists: preLay.valueLists)
-		} else {
-			self.layoutInfo = FMPLayoutInfo(fields: fieldInfos, valueLists: [String : [FMPValueListItem]]())
-		}
-		
-		guard case .nodeSet(let rows) = doc.extract(path: fmpxrRow, namespaces: fmpxrNamespaces) else {
-			self.records = [FMPRecord]()
-			return
-		}
-		
-		var recs = [FMPRecord]()
-		for row in rows {
-			guard let row = row as? XElement else {
-				continue
-			}
-			recs.append(FMPRecord(rowElement: row, fieldInfos: fieldInfos))
-		}
-		self.records = recs
+		self.databaseInfo = FMPDatabaseInfo(node: databaseNode)
+		self.layoutInfo = FMPLayoutInfo(node: metaDataNode)
+		self.foundCount = Int(resultSetNode.getAttribute(name: "count") ?? "") ?? 0
+		let fieldTypes = self.layoutInfo.flattenedTypes
+		self.records = resultSetNode.childElements.map { FMPRecord(node: $0, fieldTypes: fieldTypes) }
 	}
 }
+
+
+
+
