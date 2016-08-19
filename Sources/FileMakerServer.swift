@@ -28,10 +28,8 @@ extension XNode {
 	}
 }
 
-public enum FMPGrammar: String {
+enum FMPGrammar: String {
 	case fmResultSet = "fmresultset"
-//	case fmpXMLLayout = "FMPXMLLAYOUT"
-
 }
 
 let fmpxl = "fmpxl"
@@ -44,6 +42,7 @@ let fmpxlValue = "\(fmpxl):VALUE"
 
 public enum FMPResult {
 	case error(Int, String)
+	case names([String])
 	case resultSet(FMPResultSet)
 	case layoutInfo(FMPLayoutInfo)
 }
@@ -113,12 +112,33 @@ public struct FileMakerServer {
 		callback(.resultSet(result))
 	}
 	
-	public func databaseNames(completion: @escaping (FMPResult) -> ()) {
-		performRequest(query: "-dbnames", grammar: .fmResultSet, callback: completion)
+	func setToNames(result: FMPResult, key: String, completion: @escaping (FMPResult) -> ()) {
+		guard case .resultSet(let set) = result else {
+			return completion(result)
+		}
+		var names = [String]()
+		for rec in set.records {
+			guard let field = rec.elements[key],
+				case .field(_, let value) = field else {
+					continue
+			}
+			names.append("\(value)")
+		}
+		return completion(.names(names))
 	}
 	
+	public func databaseNames(completion: @escaping (FMPResult) -> ()) {
+		performRequest(query: "-dbnames", grammar: .fmResultSet) {
+			result in
+			self.setToNames(result: result, key: "DATABASE_NAME", completion: completion)
+		}
+	}
+
 	public func layoutNames(database: String, completion: @escaping (FMPResult) -> ()) {
-		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet, callback: completion)
+		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet) {
+			result in
+			self.setToNames(result: result, key: "LAYOUT_NAME", completion: completion)
+		}
 	}
 	
 	public func layoutInfo(database: String, layout: String, completion: @escaping (FMPResult) -> ()) {

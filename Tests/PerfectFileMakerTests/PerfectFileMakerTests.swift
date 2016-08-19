@@ -6,8 +6,55 @@ let testPort = 80
 let testUserName = ""
 let testPassword = ""
 let sampleDB = "FMServer_Sample"
+let sampleLayout = "Task Details"
 
 class PerfectFileMakerTests: XCTestCase {
+	
+	func getServer() -> FileMakerServer {
+		return FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+	}
+	
+	func testDatabaseNames() {
+		let expect = self.expectation(description: "done")
+		let fms = getServer()
+		
+		fms.databaseNames {
+			result in
+			defer {
+				expect.fulfill()
+			}
+			guard case .names(let names) = result else {
+				return XCTAssert(false, "\(result))")
+			}
+			XCTAssert(names.contains(sampleDB))
+		}
+		
+		self.waitForExpectations(timeout: 60.0) {
+			_ in
+			
+		}
+	}
+	
+	func testLayoutNames() {
+		let expect = self.expectation(description: "done")
+		let fms = getServer()
+		
+		fms.layoutNames(database: sampleDB) {
+			result in
+			defer {
+				expect.fulfill()
+			}
+			guard case .names(let names) = result else {
+				return XCTAssert(false, "\(result))")
+			}
+			XCTAssert(names.contains(sampleLayout))
+		}
+		
+		self.waitForExpectations(timeout: 60.0) {
+			_ in
+			
+		}
+	}
 	
 	func testLayoutInfo() {
 		let expectedNames = ["Status", "Category", "Description", "Task", "Related | Sort Selection",
@@ -17,9 +64,9 @@ class PerfectFileMakerTests: XCTestCase {
 		                     "Related Tasks::Due Date", "Related Tasks::Description"]
 		
 		let expect = self.expectation(description: "done")
-		let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+		let fms = getServer()
 		
-		fms.layoutInfo(database: sampleDB, layout: "Task Details") {
+		fms.layoutInfo(database: sampleDB, layout: sampleLayout) {
 			result in
 			defer {
 				expect.fulfill()
@@ -43,10 +90,10 @@ class PerfectFileMakerTests: XCTestCase {
 	func testQuerySkipMax() {
 		
 		let expect = self.expectation(description: "done")
-		let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+		let fms = getServer()
 		
 		func maxZero() {
-			let query = FMPQuery(database: sampleDB, layout: "Task Details", action: .findAll).maxRecords(0)
+			let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll).maxRecords(0)
 			XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=0&-max=0&-findall" == "\(query)")
 			fms.query(query) {
 				result in
@@ -62,7 +109,7 @@ class PerfectFileMakerTests: XCTestCase {
 		}
 		
 		func maxTwo() {
-			let query = FMPQuery(database: sampleDB, layout: "Task Details", action: .findAll).skipRecords(2).maxRecords(2)
+			let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll).skipRecords(2).maxRecords(2)
 			XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=2&-max=2&-findall" == "\(query)")
 			fms.query(query) {
 				result in
@@ -86,9 +133,9 @@ class PerfectFileMakerTests: XCTestCase {
 	}
 	
 	func testQueryFindAll() {
-		let query = FMPQuery(database: sampleDB, layout: "Task Details", action: .findAll)
+		let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll)
 		let expect = self.expectation(description: "done")
-		let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+		let fms = getServer()
 		
 		fms.query(query) {
 			result in
@@ -147,10 +194,10 @@ class PerfectFileMakerTests: XCTestCase {
 	func testQueryFindInProgress() {
 		
 		let qfields = [FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: "In Progress")])]
-		let query = FMPQuery(database: sampleDB, layout: "Task Details", action: .find).queryFields(qfields)
+		let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .find).queryFields(qfields)
 		XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=0&-max=all&-query=(q1)&-q1=Status&-q1.value===In%20Progress*&-findquery" == "\(query)")
 		let expect = self.expectation(description: "done")
-		let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+		let fms = getServer()
 		
 		fms.query(query) {
 			result in
@@ -216,7 +263,12 @@ class PerfectFileMakerTests: XCTestCase {
 	
     static var allTests : [(String, (PerfectFileMakerTests) -> () throws -> Void)] {
 		return [
+			("testDatabaseNames", testDatabaseNames),
+			("testLayoutNames", testLayoutNames),
+			("testLayoutInfo", testLayoutInfo),
+			("testQuerySkipMax", testQuerySkipMax),
 			("testQueryFindAll", testQueryFindAll),
+			("testQueryFindInProgress", testQueryFindInProgress),
         ]
     }
 }
