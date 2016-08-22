@@ -34,9 +34,20 @@ let fmrsRelatedSet = "relatedset"
 
 let fmrsData = "\(fmrs):data/text()"
 
+/// A returned FileMaker field value.
 public enum FMPFieldValue: CustomStringConvertible {
-	case text(String), number(Double), container(String),
-		date(String), time(String), timestamp(String)
+	/// A text field.
+	case text(String)
+	/// A numeric field.
+	case number(Double)
+	/// A container field.
+	case container(String)
+	/// A date field.
+	case date(String)
+	/// A time field.
+	case time(String)
+	/// A timestamp field.
+	case timestamp(String)
 	
 	init(value: String, type: FMPFieldType) {
 		switch type {
@@ -54,7 +65,7 @@ public enum FMPFieldValue: CustomStringConvertible {
 			self = .text(value)
 		}
 	}
-	
+	/// Returns the field value converted to String
 	public var description: String {
 		switch self {
 		case .text(let s): return s
@@ -67,10 +78,15 @@ public enum FMPFieldValue: CustomStringConvertible {
 	}
 }
 
+/// Meta-information for a database.
 public struct FMPDatabaseInfo {
+	/// The date format indicated by the server.
 	public let dateFormat: String
+	/// The time format indicated by the server.
 	public let timeFormat: String
+	/// The timestamp format indicated by the server.
 	public let timeStampFormat: String
+	/// The number of records in the database.
 	public let recordCount: Int
 	
 	init(node: XElement) {
@@ -81,9 +97,13 @@ public struct FMPDatabaseInfo {
 	}
 }
 
+/// An individual result set record.
 public struct FMPRecord {
+	/// A type of record item.
 	public enum RecordItem {
+		/// An individual field.
 		case field(String, FMPFieldValue)
+		/// A related set containing a list of related records.
 		case relatedSet(String, [FMPRecord])
 		
 		init(node: XElement, fieldTypes: [String:FMPFieldType]) {
@@ -110,8 +130,9 @@ public struct FMPRecord {
 			self = .field(name, FMPFieldValue(value: data?.nodeValue ?? "", type: type))
 		}
 	}
-	
+	/// The record id.
 	public let recordId: Int
+	/// The contained record items keyed by name.
 	public let elements: [String:RecordItem]
 	
 	init(node: XElement, fieldTypes: [String:FMPFieldType]) {
@@ -149,10 +170,15 @@ public struct FMPRecord {
 	}
 }
 
+/// The result set produced by a query.
 public struct FMPResultSet {
+	/// Database meta-info.
 	public let databaseInfo: FMPDatabaseInfo
+	/// Layout meta-info.
 	public let layoutInfo: FMPLayoutInfo
+	/// The number of records found by the query.
 	public let foundCount: Int
+	/// The list of records produced by the query.
 	public let records: [FMPRecord]
 	
 	init?(doc: XDocument) {

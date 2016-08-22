@@ -19,9 +19,23 @@
 
 import PerfectLib
 
+/// A database action.
 public enum FMPAction: CustomStringConvertible {
-	case find, findAll, findAny
-	case new, edit, delete, duplicate
+	/// Perform a search given the current query.
+	case find
+	/// Find all records in the database.
+	case findAll
+	/// Find and retrieve a random record.
+	case findAny
+	/// Create a new record given the current query data.
+	case new
+	/// Edit (update) the record indicated by the record id with the current query fields/values.
+	case edit
+	/// Delete the record indicated by the current record id.
+	case delete
+	/// Duplicate the record indicated by the current record id.
+	case duplicate
+	
 	public var description: String {
 		switch self {
 		case .find: return "-findquery"
@@ -35,6 +49,7 @@ public enum FMPAction: CustomStringConvertible {
 	}
 }
 
+/// A record sort order.
 public enum FMPSortOrder: CustomStringConvertible {
 	case ascending, descending, custom
 	public var description: String {
@@ -46,17 +61,23 @@ public enum FMPSortOrder: CustomStringConvertible {
 	}
 }
 
+/// A logical operator used with query field groups.
 public enum FMPLogicalOp {
 	case and, or, not
 }
 
+/// An individual field search operator.
 public enum FMPFieldOp {
 	case equal, contains, beginsWith, endsWith, greaterThan, greaterThanEqual, lessThan, lessThanEqual
 }
 
+/// An individual query field.
 public struct FMPQueryField {
+	/// The name of the field.
 	public let name: String
+	/// The value for the field.
 	public let value: Any
+	/// The search operator.
 	public let op: FMPFieldOp
 	
 	var valueWithOp: String {
@@ -72,26 +93,30 @@ public struct FMPQueryField {
 		}
 	}
 	
+	/// Initialize with a name, value and operator.
 	public init(name: String, value: Any, op: FMPFieldOp) {
 		self.name = name
 		self.value = value
 		self.op = op
 	}
-	
+	/// Initialize with a name and value.
 	public init(name: String, value: Any) {
 		self.init(name: name, value: value, op: .beginsWith)
 	}
 }
 
+/// A group of query fields.
 public struct FMPQueryFieldGroup {
+	/// The logical operator for the field group.
 	public let op: FMPLogicalOp
+	/// The list of fiedls in the group.
 	public let fields: [FMPQueryField]
-	
+	/// Initialize with an operator and field list.
 	public init(op: FMPLogicalOp, fields: [FMPQueryField]) {
 		self.op = op
 		self.fields = fields
 	}
-	
+	/// Initialize with a field list. The default logical operator is FMPLogicalOp.and.
 	public init(fields: [FMPQueryField]) {
 		self.init(op: .and, fields: fields)
 	}
@@ -104,23 +129,29 @@ public struct FMPQueryFieldGroup {
 	}
 }
 
+/// A sort field indicator.
 public struct FMPSortField {
+	/// The name of the field on which to sort.
 	public let name: String
+	/// A field sort order.
 	public let order: FMPSortOrder
-	
+	/// Initialize with a field name and sort order.
 	public init(name: String, order: FMPSortOrder) {
 		self.name = name
 		self.order = order
 	}
-	
+	/// Initialize with a field name using the default FMPSortOrder.ascending sort order.
 	public init(name: String) {
 		self.init(name: name, order: .ascending)
 	}
 }
 
+/// Indicates an invalid record id.
 public let fmpNoRecordId = -1
+/// Indicates no max records value.
 public let fmpAllRecords = -1
 
+/// An individual query & database action.
 public struct FMPQuery: CustomStringConvertible {
 	
 	let database: String
@@ -137,6 +168,7 @@ public struct FMPQuery: CustomStringConvertible {
 	let maxRecords: Int
 	let skipRecords: Int
 	
+	/// Initialize with a database name, layout name & database action.
 	public init(database: String, layout: String, action: FMPAction) {
 		queryFields = [FMPQueryFieldGroup]()
 		sortFields = [FMPSortField]()
@@ -182,6 +214,7 @@ public struct FMPQuery: CustomStringConvertible {
 		self.layout = layout
 	}
 	
+	/// Sets the record id and returns the adjusted query.
 	public func recordId(_ recordId: Int) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -189,7 +222,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds the query fields and returns the adjusted query.
 	public func queryFields(_ queryFields: [FMPQueryFieldGroup]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -197,7 +230,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds the sort fields and returns the adjusted query.
 	public func sortFields(_ sortFields: [FMPSortField]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -205,7 +238,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds the indicated pre-sort scripts and returns the adjusted query.
 	public func preSortScripts(_ preSortScripts: [String]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -213,7 +246,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds the indicated pre-find scripts and returns the adjusted query.
 	public func preFindScripts(_ preFindScripts: [String]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -221,7 +254,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds the indicated post-find scripts and returns the adjusted query.
 	public func postFindScripts(_ postFindScripts: [String]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -229,7 +262,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Sets the response layout and returns the adjusted query.
 	public func responseLayout(_ responseLayout: String) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -237,7 +270,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Adds response fields and returns the adjusted query.
 	public func responseFields(_ responseFields: [String]) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -245,7 +278,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Sets the maximum records to fetch and returns the adjusted query.
 	public func maxRecords(_ maxRecords: Int) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -253,7 +286,7 @@ public struct FMPQuery: CustomStringConvertible {
 		                responseFields: responseFields, maxRecords: maxRecords, skipRecords: skipRecords,
 		                action: action, database: database, layout: layout)
 	}
-	
+	/// Sets the number of records to skip in the found set and returns the adjusted query.
 	public func skipRecords(_ skipRecords: Int) -> FMPQuery {
 		return FMPQuery(queryFields: queryFields, sortFields: sortFields, recordId: recordId,
 		                preSortScripts: preSortScripts, preFindScripts: preFindScripts,
@@ -363,7 +396,8 @@ public struct FMPQuery: CustomStringConvertible {
 	public var description: String {
 		return queryString
 	}
-	
+	/// Returns the formulated query string.
+	/// Useful for debugging purposes.
 	public var queryString: String {
 		let starter = dbLayString +
 			maybeAmp(scriptsString) +

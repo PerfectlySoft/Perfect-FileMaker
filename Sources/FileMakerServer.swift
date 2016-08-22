@@ -1,6 +1,6 @@
 //
-//  PostgreFileMaker.swift
-//  PostgreFileMaker
+//  FileMakerServer.swift
+//  PerfectFileMaker
 //
 //  Created by Kyle Jessup on 2016-08-02.
 //	Copyright (C) 2016 PerfectlySoft, Inc.
@@ -40,13 +40,20 @@ let fmpxlStyle = "\(fmpxl):STYLE"
 let fmpxlValueLists = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):VALUELISTS/\(fmpxl):VALUELIST"
 let fmpxlValue = "\(fmpxl):VALUE"
 
+/// The various result types from a FileMaker Server call.
 public enum FMPResult {
+	/// An error code and message.
 	case error(Int, String)
+	/// A list of names from the server. Used for layout and database names.
 	case names([String])
+	/// A result set from the server.
 	case resultSet(FMPResultSet)
+	/// Layout information for a particular database.
 	case layoutInfo(FMPLayoutInfo)
 }
 
+/// A connection to a FileMaker Server instance.
+/// Initialize using a host, port, username and password.
 public struct FileMakerServer {
 	let host: String
 	let port: Int
@@ -127,6 +134,7 @@ public struct FileMakerServer {
 		return completion(.names(names))
 	}
 	
+	/// Retrieve the list of database hosted by the server.
 	public func databaseNames(completion: @escaping (FMPResult) -> ()) {
 		performRequest(query: "-dbnames", grammar: .fmResultSet) {
 			result in
@@ -134,6 +142,7 @@ public struct FileMakerServer {
 		}
 	}
 
+	/// Retrieve the list of layouts for a particular database.
 	public func layoutNames(database: String, completion: @escaping (FMPResult) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet) {
 			result in
@@ -141,6 +150,7 @@ public struct FileMakerServer {
 		}
 	}
 	
+	/// Get a database's layout information. Includes all field and portal names.
 	public func layoutInfo(database: String, layout: String, completion: @escaping (FMPResult) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmResultSet) {
 			result in
@@ -151,6 +161,7 @@ public struct FileMakerServer {
 		}
 	}
 	
+	/// Perform a query and provide any resulting data. 
 	public func query(_ query: FMPQuery, skipValueLists: Bool = false, completion: @escaping (FMPResult) -> ()) {
 		let queryString = query.queryString
 		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)

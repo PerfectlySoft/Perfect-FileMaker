@@ -19,6 +19,7 @@
 
 import PerfectXML
 
+/// One of the possible FileMaker field types.
 public enum FMPFieldType {
 	case text, number, container, date, time, timestamp
 	
@@ -40,6 +41,7 @@ public enum FMPFieldType {
 	}
 }
 
+/// A FileMaker field definition. Indicates a field name and type.
 public struct FMPFieldDefinition {
 	public let name: String
 	public let type: FMPFieldType
@@ -50,8 +52,11 @@ public struct FMPFieldDefinition {
 	}
 }
 
+/// Represents either an individual field definition or a related (portal) definition.
 public enum FMPMetaDataItem {
+	/// An individual field.
 	case fieldDefinition(FMPFieldDefinition)
+	/// A related set. Indicates the portal name and its contained fields.
 	case relatedSetDefinition(String, [FMPFieldDefinition])
 	
 	init(node: XElement) {
@@ -63,8 +68,11 @@ public enum FMPMetaDataItem {
 	}
 }
 
+/// Represents meta-information about a particular layout.
 public struct FMPLayoutInfo {
+	/// Each field or related set as a list.
 	public let fields: [FMPMetaDataItem]
+	/// Each field or related set keyed by name.
 	public let fieldsByName: [String:FMPFieldType]
 	
 	init(node: XElement) {
