@@ -23,10 +23,14 @@ class PerfectFileMakerTests: XCTestCase {
 			defer {
 				expect.fulfill()
 			}
-			guard case .names(let names) = result else {
-				return XCTAssert(false, "\(result))")
+			do {
+				let names = try result()
+				XCTAssert(names.contains(sampleDB))
+			} catch FMPError.serverError(let code, let msg) {
+				return XCTAssert(false, "\(code) \(msg)")
+			} catch let e {
+				return XCTAssert(false, "\(e)")
 			}
-			XCTAssert(names.contains(sampleDB))
 		}
 		
 		self.waitForExpectations(timeout: 60.0) {
@@ -44,8 +48,8 @@ class PerfectFileMakerTests: XCTestCase {
 			defer {
 				expect.fulfill()
 			}
-			guard case .names(let names) = result else {
-				return XCTAssert(false, "\(result))")
+			guard let names = try? result() else {
+				return XCTAssert(false, "\(result)")
 			}
 			XCTAssert(names.contains(sampleLayout))
 		}
@@ -71,7 +75,7 @@ class PerfectFileMakerTests: XCTestCase {
 			defer {
 				expect.fulfill()
 			}
-			guard case .layoutInfo(let layoutInfo) = result else {
+			guard let layoutInfo = try? result() else {
 				return XCTAssert(false, "\(result))")
 			}
 			let fieldsByName = layoutInfo.fieldsByName
@@ -97,7 +101,7 @@ class PerfectFileMakerTests: XCTestCase {
 			XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=0&-max=0&-findall" == "\(query)")
 			fms.query(query) {
 				result in
-				guard case .resultSet(let resultSet) = result else {
+				guard let resultSet = try? result() else {
 					XCTAssert(false, "\(result))")
 					return expect.fulfill()
 				}
@@ -113,7 +117,7 @@ class PerfectFileMakerTests: XCTestCase {
 			XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=2&-max=2&-findall" == "\(query)")
 			fms.query(query) {
 				result in
-				guard case .resultSet(let resultSet) = result else {
+				guard let resultSet = try? result() else {
 					XCTAssert(false, "\(result))")
 					return expect.fulfill()
 				}
@@ -142,7 +146,7 @@ class PerfectFileMakerTests: XCTestCase {
 			defer {
 				expect.fulfill()
 			}
-			guard case .resultSet(let resultSet) = result else {
+			guard let resultSet = try? result() else {
 				return XCTAssert(false, "\(result))")
 			}
 			let fields = resultSet.layoutInfo.fields
@@ -204,7 +208,7 @@ class PerfectFileMakerTests: XCTestCase {
 			defer {
 				expect.fulfill()
 			}
-			guard case .resultSet(let resultSet) = result else {
+			guard let resultSet = try? result() else {
 				return XCTAssert(false, "\(result))")
 			}
 			let fields = resultSet.layoutInfo.fields
@@ -219,15 +223,15 @@ class PerfectFileMakerTests: XCTestCase {
 						let name = def.name
 						let fnd = rec.elements[name]
 						XCTAssert(nil != fnd, "\(name) not found in \(rec.elements)")
-						guard case .field(let fn, let value) = fnd! else {
+						guard case .field(let fn, let fieldValue) = fnd! else {
 							XCTAssert(false, "expected field \(fnd)")
 							continue
 						}
 						XCTAssert(fn == name)
 						
 						if name == "Status" {
-							guard case .text(let tstStr) = value else {
-								XCTAssert(false, "bad value \(value)")
+							guard case .text(let tstStr) = fieldValue else {
+								XCTAssert(false, "bad value \(fieldValue)")
 								continue
 							}
 							XCTAssert("In Progress" == tstStr, "\(tstStr)")

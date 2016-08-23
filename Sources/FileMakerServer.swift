@@ -40,16 +40,9 @@ let fmpxlStyle = "\(fmpxl):STYLE"
 let fmpxlValueLists = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):VALUELISTS/\(fmpxl):VALUELIST"
 let fmpxlValue = "\(fmpxl):VALUE"
 
-/// The various result types from a FileMaker Server call.
-public enum FMPResult {
+public enum FMPError: Error {
 	/// An error code and message.
-	case error(Int, String)
-	/// A list of names from the server. Used for layout and database names.
-	case names([String])
-	/// A result set from the server.
-	case resultSet(FMPResultSet)
-	/// Layout information for a particular database.
-	case layoutInfo(FMPLayoutInfo)
+	case serverError(Int, String)
 }
 
 /// A connection to a FileMaker Server instance.
@@ -84,7 +77,7 @@ public struct FileMakerServer {
 		return errorCode
 	}
 	
-	func performRequest(query: String, grammar: FMPGrammar, callback: @escaping (FMPResult) -> ()) {
+	func performRequest(query: String, grammar: FMPGrammar, callback: @escaping (() throws -> FMPResultSet) -> ()) {
 		let curl = makeCURL(url: makeUrl(grammar: grammar))
 				
 		let byteArray = [UInt8](query.utf8)
@@ -96,11 +89,11 @@ public struct FileMakerServer {
 		curl.perform {
 			code, header, body in
 			guard curl.responseCode == 200 else {
-				return callback(.error(curl.responseCode, "Bad response"))
+				return callback({ throw FMPError.serverError(curl.responseCode, "Bad response") })
 			}
 			let bodyString = UTF8Encoding.encode(bytes: body)
 			guard let doc = XDocument(fromSource: bodyString) else {
-				return callback(.error(500, "Bad response"))
+				return callback({ throw FMPError.serverError(500, "Bad response") })
 			}
 			switch grammar {
 			case .fmResultSet: self.processGrammar_FMPResultSet(doc: doc, callback: callback)
@@ -108,61 +101,68 @@ public struct FileMakerServer {
 		}
 	}
 	
-	func processGrammar_FMPResultSet(doc: XDocument, callback: (FMPResult) -> ()) {
+	func processGrammar_FMPResultSet(doc: XDocument, callback: (() throws -> FMPResultSet) -> ()) {
 		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
 		guard errorCode == 0 else {
-			return callback(.error(errorCode, "Error from FileMaker server"))
+			return callback({ throw FMPError.serverError(errorCode, "Error from FileMaker server") })
 		}
 		guard let result = FMPResultSet(doc: doc) else {
-			return callback(.error(500, "Invalid response from FileMaker server"))
+			return callback({ throw FMPError.serverError(500, "Invalid response from FileMaker server") })
 		}
-		callback(.resultSet(result))
+		callback({ return result })
 	}
 	
-	func setToNames(result: FMPResult, key: String, completion: @escaping (FMPResult) -> ()) {
-		guard case .resultSet(let set) = result else {
-			return completion(result)
-		}
+	func setToNames(result: FMPResultSet, key: String, completion: @escaping (() throws -> [String]) -> ()) {
 		var names = [String]()
-		for rec in set.records {
+		for rec in result.records {
 			guard let field = rec.elements[key],
 				case .field(_, let value) = field else {
 					continue
 			}
 			names.append("\(value)")
 		}
-		return completion(.names(names))
+		return completion({ return names })
 	}
 	
 	/// Retrieve the list of database hosted by the server.
-	public func databaseNames(completion: @escaping (FMPResult) -> ()) {
+	public func databaseNames(completion: @escaping (() throws -> [String]) -> ()) {
 		performRequest(query: "-dbnames", grammar: .fmResultSet) {
 			result in
-			self.setToNames(result: result, key: "DATABASE_NAME", completion: completion)
+			do {
+				self.setToNames(result: try result(), key: "DATABASE_NAME", completion: completion)
+			} catch let e {
+				completion({ throw e })
+			}
 		}
 	}
 
 	/// Retrieve the list of layouts for a particular database.
-	public func layoutNames(database: String, completion: @escaping (FMPResult) -> ()) {
+	public func layoutNames(database: String, completion: @escaping (() throws -> [String]) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet) {
 			result in
-			self.setToNames(result: result, key: "LAYOUT_NAME", completion: completion)
+			do {
+				self.setToNames(result: try result(), key: "LAYOUT_NAME", completion: completion)
+			} catch let e {
+				completion({ throw e })
+			}
 		}
 	}
 	
 	/// Get a database's layout information. Includes all field and portal names.
-	public func layoutInfo(database: String, layout: String, completion: @escaping (FMPResult) -> ()) {
+	public func layoutInfo(database: String, layout: String, completion: @escaping (() throws -> FMPLayoutInfo) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmResultSet) {
 			result in
-			guard case .resultSet(let set) = result else {
-				return completion(result)
+			do {
+				let layoutInfo = try result().layoutInfo
+				return completion({ return layoutInfo })
+			} catch let e {
+				completion({ throw e })
 			}
-			return completion(.layoutInfo(set.layoutInfo))
 		}
 	}
 	
 	/// Perform a query and provide any resulting data. 
-	public func query(_ query: FMPQuery, skipValueLists: Bool = false, completion: @escaping (FMPResult) -> ()) {
+	public func query(_ query: FMPQuery, skipValueLists: Bool = false, completion: @escaping (() throws -> FMPResultSet) -> ()) {
 		let queryString = query.queryString
 		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)
 	}

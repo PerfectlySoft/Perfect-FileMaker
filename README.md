@@ -29,3 +29,159 @@ Add this project as a dependency in your Package.swift file.
 
 To utilize this package, ```import PerfectFileMaker```.
 
+### List Available Databases
+
+This snippet connects to the server and has it list all of the hosted databases.
+
+```swift
+let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+fms.databaseNames {
+	result in
+	do {
+		// Get the list of names
+		let names = try result()
+		for name in names {
+			print("Got a database name \(name)")
+		}
+	} catch FMPError.serverError(let code, let msg) {
+		print("Got a server error \(code) \(msg)")
+	} catch let e {
+		print("Got an unexpected error \(e)")
+	}
+}
+```
+
+### List Available Layouts
+
+List all of the layouts in a particular database.
+
+```swift
+let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+fms.layoutNames(database: "FMServer_Sample") {
+	result in
+	guard let names = try? result() else {
+		return // got an error
+	}
+	for name in names {
+		print("Got a layout name \(name)")
+	}
+}
+```
+
+### List Field On Layout
+
+List all of the field names on a particular layout.
+
+```swift
+let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+fms.layoutInfo(database: "FMServer_Sample", layout: "Task Details") {
+	result in
+	guard let layoutInfo = try? result() else {
+		return // error
+	}
+	let fieldsByName = layoutInfo.fieldsByName
+	for (name, value) in fieldsByName {
+		print("Field \(name) = \(value)")
+	}
+}
+```
+
+### Find All Records
+
+Perform a findall and print all field names and values.
+
+```swift
+let query = FMPQuery(database: "FMServer_Sample", layout: "Task Details", action: .findAll)
+let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+fms.query(query) {
+	result in
+	guard let resultSet = try? result() else {
+		return // error
+	}
+	let fields = resultSet.layoutInfo.fields
+	let records = resultSet.records
+	let recordCount = records.count
+	for i in 0..<recordCount {
+		let rec = records[i]
+		for field in fields {
+			switch field {
+			case .fieldDefinition(let def):
+				let fieldName = def.name
+				if let fnd = rec.elements[fieldName], case .field(_, let fieldValue) = fnd {
+					print("Normal field: \(fieldName) = \(fieldValue)")
+				}
+			case .relatedSetDefinition(let name, _):
+				guard let fnd = rec.elements[name], case .relatedSet(_, let relatedRecs) = fnd else {
+					continue
+				}
+				print("Relation: \(name)")
+				for relatedRec in relatedRecs {
+					for relatedRow in relatedRec.elements.values {
+						if case .field(let fieldName, let fieldValue) = relatedRow {
+							print("\tRelated field: \(fieldName) = \(fieldValue)")
+						}
+					}
+				}
+			}
+		}
+	}
+}
+```
+
+### Find All Records With Skip &amp; Max
+
+To add skip and max, the query above would be amended as follows:
+
+```swift
+// Skip two records and return a max of two records.
+let query = FMPQuery(database: "FMServer_Sample", layout: "Task Details", action: .findAll)
+	.skipRecords(2).maxRecords(2)
+...
+```
+
+### Find Records Where "Status" Is "In Progress"
+
+Find all records where the field "Status" has the value of "In Progress".
+
+```swift
+let qfields = [FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: "In Progress")])]
+let query = FMPQuery(database: "FMServer_Sample", layout: "Task Details", action: .find)
+	.queryFields(qfields)
+let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
+fms.query(query) {
+	result in
+	guard let resultSet = try? result() else {
+		return // error
+	}
+	let fields = resultSet.layoutInfo.fields
+	let records = resultSet.records
+	let recordCount = records.count
+	for i in 0..<recordCount {
+		let rec = records[i]
+		for field in fields {
+			switch field {
+			case .fieldDefinition(let def):
+				let fieldName = def.name
+				if let fnd = rec.elements[fieldName], case .field(_, let fieldValue) = fnd {
+					print("Normal field: \(fieldName) = \(fieldValue)")
+					if name == "Status", case .text(let tstStr) = fieldValue {
+						print("Status == \(tstStr)")
+					}
+				}
+			case .relatedSetDefinition(let name, _):
+				guard let fnd = rec.elements[name], case .relatedSet(_, let relatedRecs) = fnd else {
+					continue
+				}
+				print("Relation: \(name)")
+				for relatedRec in relatedRecs {
+					for relatedRow in relatedRec.elements.values {
+						if case .field(let fieldName, let fieldValue) = relatedRow {
+							print("\tRelated field: \(fieldName) = \(fieldValue)")
+						}
+					}
+				}
+			}
+		}
+	}
+}
+```
