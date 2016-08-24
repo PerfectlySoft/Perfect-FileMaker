@@ -46,12 +46,19 @@ public enum FMPError: Error {
 }
 
 /// A connection to a FileMaker Server instance.
-/// Initialize using a host, port, username and password.
 public struct FileMakerServer {
 	let host: String
 	let port: Int
 	let userName: String
 	let password: String
+	
+	/// Initialize using a host, port, username and password.
+	public init(host: String, port: Int, userName: String, password: String) {
+		self.host = host
+		self.port = port
+		self.userName = userName
+		self.password = password
+	}
 	
 	func makeUrl(grammar: FMPGrammar) -> String {
 		let scheme = port == 443 ? "https" : "http"
@@ -103,7 +110,7 @@ public struct FileMakerServer {
 	
 	func processGrammar_FMPResultSet(doc: XDocument, callback: (() throws -> FMPResultSet) -> ()) {
 		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
-		guard errorCode == 0 else {
+		guard errorCode == 0 || errorCode == 200 else {
 			return callback({ throw FMPError.serverError(errorCode, "Error from FileMaker server") })
 		}
 		guard let result = FMPResultSet(doc: doc) else {
@@ -149,7 +156,9 @@ public struct FileMakerServer {
 	}
 	
 	/// Get a database's layout information. Includes all field and portal names.
-	public func layoutInfo(database: String, layout: String, completion: @escaping (() throws -> FMPLayoutInfo) -> ()) {
+	public func layoutInfo(database: String,
+	                       layout: String,
+	                       completion: @escaping (() throws -> FMPLayoutInfo) -> ()) {
 		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmResultSet) {
 			result in
 			do {
@@ -162,9 +171,15 @@ public struct FileMakerServer {
 	}
 	
 	/// Perform a query and provide any resulting data. 
-	public func query(_ query: FMPQuery, skipValueLists: Bool = false, completion: @escaping (() throws -> FMPResultSet) -> ()) {
+	public func query(_ query: FMPQuery, completion: @escaping (() throws -> FMPResultSet) -> ()) {
 		let queryString = query.queryString
 		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)
 	}
+	
+	/// Perform the queries and provide the resulting data.
+//	public func query(_ query: [FMPQuery], completion: @escaping (() throws -> FMPResultSet) -> ()) {
+//		let queryString = query.queryString
+//		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)
+//	}
 }
 

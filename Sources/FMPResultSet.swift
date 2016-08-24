@@ -86,7 +86,7 @@ public struct FMPDatabaseInfo {
 	public let timeFormat: String
 	/// The timestamp format indicated by the server.
 	public let timeStampFormat: String
-	/// The number of records in the database.
+	/// The total number of records in the database.
 	public let recordCount: Int
 	
 	init(node: XElement) {

@@ -21,7 +21,18 @@ import PerfectXML
 
 /// One of the possible FileMaker field types.
 public enum FMPFieldType {
-	case text, number, container, date, time, timestamp
+	/// A text field.
+	case text
+	/// A numeric field.
+	case number
+	/// A container field.
+	case container
+	/// A date field.
+	case date
+	/// A time field.
+	case time
+	/// A timestamp field.
+	case timestamp
 	
 	init(_ type: String) {
 		switch type {
@@ -43,7 +54,9 @@ public enum FMPFieldType {
 
 /// A FileMaker field definition. Indicates a field name and type.
 public struct FMPFieldDefinition {
+	/// The field name.
 	public let name: String
+	/// The field type.
 	public let type: FMPFieldType
 	
 	init(node: XElement) {

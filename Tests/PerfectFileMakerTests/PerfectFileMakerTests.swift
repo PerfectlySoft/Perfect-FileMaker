@@ -265,6 +265,73 @@ class PerfectFileMakerTests: XCTestCase {
 		}
 	}
 	
+	func testNewAndDelete() {
+		let unique = time(nil)
+		let task = "Add a new record @ \(unique) ☃️"
+		let qfields = [FMPQueryField(name: "Task", value: task), FMPQueryField(name: "Status", value: "In Progress")]
+		let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .new).queryFields(qfields)
+		XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&Task=Add%20a%20new%20record%20@%20\(unique)%20%E2%98%83%EF%B8%8F&Status=In%20Progress&-new" == "\(query)")
+		let expect = self.expectation(description: "done")
+		let fms = getServer()
+		
+		fms.query(query) {
+			result in
+			guard let resultSet = try? result() else {
+				XCTAssert(false, "\(result))")
+				return expect.fulfill()
+			}
+			XCTAssert(resultSet.records.count == 0)
+			let findQuery = FMPQuery(database: sampleDB, layout: sampleLayout, action: .find).queryFields([FMPQueryField(name: "Task", value: task, op: .equal)])
+			XCTAssert("-db=FMServer_Sample&-lay=Task%20Details&-skip=0&-max=all&-query=(q1)&-q1=Task&-q1.value===Add%20a%20new%20record%20@%20\(unique)%20%E2%98%83%EF%B8%8F&-findquery" == "\(findQuery)")
+			fms.query(findQuery) {
+				result in
+				guard let resultSet = try? result() else {
+					XCTAssert(false, "\(result))")
+					return expect.fulfill()
+				}
+				XCTAssert(resultSet.records.count == 1)
+				let recId = resultSet.records.first!.recordId
+				XCTAssert(recId != fmpNoRecordId)
+				let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .find).recordId(recId)
+				print("\(query)")
+				fms.query(query) {
+					result in
+					guard let resultSet = try? result() else {
+						XCTAssert(false, "\(result))")
+						return expect.fulfill()
+					}
+					XCTAssert(resultSet.records.count == 1)
+					let recId = resultSet.records.first!.recordId
+					XCTAssert(recId != fmpNoRecordId)
+					let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .delete).recordId(recId)
+					fms.query(query) {
+						result in
+						guard let resultSet = try? result() else {
+							return XCTAssert(false, "\(result))")
+						}
+						XCTAssert(resultSet.records.count == 0)
+						fms.query(findQuery) {
+							result in
+							defer {
+								expect.fulfill()
+							}
+							guard let resultSet = try? result() else {
+								XCTAssert(false, "\(result))")
+								return expect.fulfill()
+							}
+							XCTAssert(resultSet.records.count == 0)
+						}
+					}
+				}
+			}
+		}
+		
+		self.waitForExpectations(timeout: 60.0) {
+			_ in
+			
+		}
+	}
+	
     static var allTests : [(String, (PerfectFileMakerTests) -> () throws -> Void)] {
 		return [
 			("testDatabaseNames", testDatabaseNames),
@@ -273,6 +340,7 @@ class PerfectFileMakerTests: XCTestCase {
 			("testQuerySkipMax", testQuerySkipMax),
 			("testQueryFindAll", testQueryFindAll),
 			("testQueryFindInProgress", testQueryFindInProgress),
+			("testNewAndDelete", testNewAndDelete),
         ]
     }
 }
