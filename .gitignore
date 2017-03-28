@@ -67,3 +67,5 @@ fastlane/test_output
 Packages/
 *.xcodeproj/
 PawTesting.paw
+.DS_Store
+Package.pins
