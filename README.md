@@ -58,7 +58,7 @@ sudo apt-get install libcurl4-openssl-dev libxml2-dev
 Add this project as a dependency in your Package.swift file.
 
 ```
-.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", .branch("master"))
+.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", from: "3.0.0")
 ```
 
 ## Examples

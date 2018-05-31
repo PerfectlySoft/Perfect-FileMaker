@@ -22,8 +22,8 @@ import PackageDescription
 let package = Package(name: "PerfectFileMaker", 
 	products: [.library(name: "PerfectFileMaker",targets: ["PerfectFileMaker"]),],
     dependencies: [
-		.package(url: "https://github.com/PerfectlySoft/Perfect-XML.git", .branch("master")),
-		.package(url: "https://github.com/PerfectlySoft/Perfect-CURL.git", .branch("master")),
+		.package(url: "https://github.com/PerfectlySoft/Perfect-XML.git", from: "3.0.0"),
+		.package(url: "https://github.com/PerfectlySoft/Perfect-CURL.git", from: "3.0.0"),
 	],
     targets: [
         .target(
