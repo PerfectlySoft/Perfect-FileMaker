@@ -69,3 +69,4 @@ Packages/
 PawTesting.paw
 .DS_Store
 Package.pins
+*.resolved

@@ -24,7 +24,11 @@ import cURL
 
 extension XNode {
 	var childElements: [XElement] {
-		return self.childNodes.flatMap { $0 as? XElement }
+		#if swift(>=4.1)
+			return self.childNodes.compactMap { $0 as? XElement }
+		#else
+			return self.childNodes.flatMap { $0 as? XElement }
+		#endif
 	}
 }
 
