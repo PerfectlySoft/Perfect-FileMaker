@@ -34,6 +34,7 @@ extension XNode {
 
 enum FMPGrammar: String {
 	case fmResultSet = "fmresultset"
+	case fmResultSet = "fmpxmlresult"
 }
 
 let fmpxl = "fmpxl"
