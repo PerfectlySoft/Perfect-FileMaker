@@ -20,7 +20,7 @@
 import PerfectXML
 
 /// One of the possible FileMaker field types.
-public enum FMPFieldType {
+public enum FMPFieldType: Sendable {
 	/// A text field.
 	case text
 	/// A numeric field.
@@ -53,7 +53,7 @@ public enum FMPFieldType {
 }
 
 /// A FileMaker field definition. Indicates a field name and type.
-public struct FMPFieldDefinition {
+public struct FMPFieldDefinition: Sendable {
 	/// The field name.
 	public let name: String
 	/// The field type.
@@ -66,7 +66,7 @@ public struct FMPFieldDefinition {
 }
 
 /// Represents either an individual field definition or a related (portal) definition.
-public enum FMPMetaDataItem {
+public enum FMPMetaDataItem: Sendable {
 	/// An individual field.
 	case fieldDefinition(FMPFieldDefinition)
 	/// A related set. Indicates the portal name and its contained fields.
@@ -82,7 +82,7 @@ public enum FMPMetaDataItem {
 }
 
 /// Represents meta-information about a particular layout.
-public struct FMPLayoutInfo {
+public struct FMPLayoutInfo: Sendable {
 	/// Each field or related set as a list.
 	public let fields: [FMPMetaDataItem]
 	/// Each field or related set keyed by name.

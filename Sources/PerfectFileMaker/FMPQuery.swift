@@ -17,10 +17,40 @@
 //===----------------------------------------------------------------------===//
 //
 
-import PerfectLib
+import Foundation
+
+/// Percent-encodes every byte outside a strict RFC-3986-unreserved-only
+/// allow-list (`A-Za-z0-9-._~`) — deliberately narrower than
+/// `Foundation`'s `CharacterSet.urlQueryAllowed` (which lets `!$&'()*+,;=`
+/// through untouched) and than the original `PerfectLib.stringByEncodingURL`
+/// this replaces (which left `& = ! ( ) * ;` unescaped). FileMaker's
+/// classic XML Web Publishing query grammar treats exactly those
+/// characters as structurally significant (`-q1=Name&-q1.value=Value`,
+/// compound queries like `-query=(q1,q2);(q3)`) — an unescaped `&` in a
+/// user-supplied search value could otherwise smuggle extra query
+/// directives into the request. Since the whole query string is POSTed
+/// as `application/x-www-form-urlencoded`, over-encoding here is
+/// invisible to FileMaker's own parser after its decode step, so erring
+/// toward escaping more than strictly necessary is safe, not lossy.
+extension String {
+	var fmpEscaped: String {
+		var result = ""
+		result.reserveCapacity(utf8.count)
+		for byte in utf8 {
+			switch byte {
+			case 0x41...0x5A, 0x61...0x7A, 0x30...0x39, // A-Z a-z 0-9
+				 0x2D, 0x2E, 0x5F, 0x7E:                // - . _ ~
+				result.append(Character(UnicodeScalar(byte)))
+			default:
+				result += String(format: "%%%02X", byte)
+			}
+		}
+		return result
+	}
+}
 
 /// A database action.
-public enum FMPAction: CustomStringConvertible {
+public enum FMPAction: CustomStringConvertible, Sendable {
 	/// Perform a search given the current query.
 	case find
 	/// Find all records in the database.
@@ -50,7 +80,7 @@ public enum FMPAction: CustomStringConvertible {
 }
 
 /// A record sort order.
-public enum FMPSortOrder: CustomStringConvertible {
+public enum FMPSortOrder: CustomStringConvertible, Sendable {
 	/// Sort the records by the indicated field in ascending order.
 	case ascending
 	/// Sort the records by the indicated field in descending order.
@@ -67,7 +97,7 @@ public enum FMPSortOrder: CustomStringConvertible {
 }
 
 /// A sort field indicator.
-public struct FMPSortField {
+public struct FMPSortField: Sendable {
 	/// The name of the field on which to sort.
 	public let name: String
 	/// A field sort order.
@@ -84,7 +114,7 @@ public struct FMPSortField {
 }
 
 /// An individual field search operator.
-public enum FMPFieldOp {
+public enum FMPFieldOp: Sendable {
 	case equal
 	case contains
 	case beginsWith
@@ -96,7 +126,12 @@ public enum FMPFieldOp {
 }
 
 /// An individual query field.
-public struct FMPQueryField {
+///
+/// `@unchecked Sendable`: `value: Any` can't be verified Sendable at
+/// compile time. In practice callers only ever pass primitive/`String`
+/// values here (matching every real usage in this library and its
+/// tests) — there's no stored mutable reference type this could hide.
+public struct FMPQueryField: @unchecked Sendable {
 	/// The name of the field.
 	public let name: String
 	/// The value for the field.
@@ -110,27 +145,38 @@ public struct FMPQueryField {
 		self.op = op
 	}
 	
+	/// The operator token is always-ASCII, fixed FileMaker query syntax —
+	/// never user data — and stays unencoded. Only the actual comparison
+	/// value is percent-encoded, and only once: encoding the operator
+	/// characters themselves (`> < = *`) here and relying on the call
+	/// site to encode this whole string a second time was the original
+	/// bug (see `FMPQuery.swift`'s `compoundFieldsString`) — under
+	/// `PerfectLib`'s old encoder, `.greaterThan`/`.lessThanEqual`/etc.
+	/// (which embed `<`/`>`/`=`, characters that encoder did escape)
+	/// produced mangled, broken queries. Never feed operator syntax into
+	/// the encoder.
 	var valueWithOp: String {
+		let encodedValue = "\(value)".fmpEscaped
 		switch op {
-		case .equal: return "==\(value)"
-		case .contains: return "==*\(value)*"
-		case .beginsWith: return "==\(value)*"
-		case .endsWith: return "==*\(value)"
-		case .greaterThan: return ">\(value)"
-		case .greaterThanEqual: return ">=\(value)"
-		case .lessThan: return "<\(value)"
-		case .lessThanEqual: return "<=\(value)"
+		case .equal: return "==\(encodedValue)"
+		case .contains: return "==*\(encodedValue)*"
+		case .beginsWith: return "==\(encodedValue)*"
+		case .endsWith: return "==*\(encodedValue)"
+		case .greaterThan: return ">\(encodedValue)"
+		case .greaterThanEqual: return ">=\(encodedValue)"
+		case .lessThan: return "<\(encodedValue)"
+		case .lessThanEqual: return "<=\(encodedValue)"
 		}
 	}
 }
 
 /// A logical operator used with query field groups.
-public enum FMPLogicalOp {
+public enum FMPLogicalOp: Sendable {
 	case and, or, not
 }
 
 /// A group of query fields.
-public struct FMPQueryFieldGroup {
+public struct FMPQueryFieldGroup: Sendable {
 	/// The logical operator for the field group.
 	public let op: FMPLogicalOp
 	/// The list of fiedls in the group.
@@ -145,7 +191,7 @@ public struct FMPQueryFieldGroup {
 	var simpleFieldsString: String {
 		return fields.map {
 			let vstr = "\($0.value)"
-			return "\($0.name.stringByEncodingURL)=\(vstr.stringByEncodingURL)"
+			return "\($0.name.fmpEscaped)=\(vstr.fmpEscaped)"
 		}.joined(separator: "&")
 	}
 }
@@ -156,7 +202,7 @@ public let fmpNoRecordId = -1
 public let fmpAllRecords = -1
 
 /// An individual query & database action.
-public struct FMPQuery: CustomStringConvertible {
+public struct FMPQuery: CustomStringConvertible, Sendable {
 	
 	let database: String
 	let layout: String
@@ -322,26 +368,26 @@ public struct FMPQuery: CustomStringConvertible {
 	}
 	
 	var dbLayString: String {
-		return "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&"
+		return "-db=\(database.fmpEscaped)&-lay=\(layout.fmpEscaped)&"
 	}
 	
 	var sortFieldsString: String {
 		var colNum = 1
 		return sortFields.map { field -> String in
-			let ret = "-sortfield.\(colNum)=\(field.name.stringByEncodingURL)&-sortorder.\(colNum)=\(field.order)"
+			let ret = "-sortfield.\(colNum)=\(field.name.fmpEscaped)&-sortorder.\(colNum)=\(field.order)"
 			colNum += 1
 			return ret
 		}.joined(separator: "&")
 	}
 	
 	var responseFieldsString: String {
-		return responseFields.map { "-field=\($0.stringByEncodingURL)" }.joined(separator: "&")
+		return responseFields.map { "-field=\($0.fmpEscaped)" }.joined(separator: "&")
 	}
 	
 	var scriptsString: String {
-		let preSorts = preSortScripts.map { "-script.presort=\($0.stringByEncodingURL)" }.joined(separator: "&")
-		let preFinds = preFindScripts.map { "-script.prefind=\($0.stringByEncodingURL)" }.joined(separator: "&")
-		let postFinds = postFindScripts.map { "-script=\($0.stringByEncodingURL)" }.joined(separator: "&")
+		let preSorts = preSortScripts.map { "-script.presort=\($0.fmpEscaped)" }.joined(separator: "&")
+		let preFinds = preFindScripts.map { "-script.prefind=\($0.fmpEscaped)" }.joined(separator: "&")
+		let postFinds = postFindScripts.map { "-script=\($0.fmpEscaped)" }.joined(separator: "&")
 		return maybeAmp(preSorts) + maybeAmp(preFinds) + postFinds
 	}
 	
@@ -360,7 +406,7 @@ public struct FMPQuery: CustomStringConvertible {
 		if responseLayout.isEmpty {
 			return ""
 		}
-		return "-lay.response=\(responseLayout.stringByEncodingURL)"
+		return "-lay.response=\(responseLayout.fmpEscaped)"
 	}
 	
 	var actionString: String {
@@ -389,7 +435,7 @@ public struct FMPQuery: CustomStringConvertible {
 				segments.append(str)
 			}
 		}
-		return "-query=\(segments.joined(separator: ";").stringByEncodingURL)"
+		return "-query=\(segments.joined(separator: ";").fmpEscaped)"
 	}
 	
 	var compoundFieldsString: String {
@@ -398,7 +444,10 @@ public struct FMPQuery: CustomStringConvertible {
 		for group in queryFields {
 			let str = group.fields.map {
 				num += 1
-				return "-q\(num)=\($0.name.stringByEncodingURL)&-q\(num).value=\($0.valueWithOp.stringByEncodingURL)"
+				// valueWithOp already encodes its value portion internally
+				// and deliberately leaves the operator token unencoded —
+				// do not re-encode the whole thing here.
+				return "-q\(num)=\($0.name.fmpEscaped)&-q\(num).value=\($0.valueWithOp)"
 			}.joined(separator: "&")
 			segments.append(str)
 		}

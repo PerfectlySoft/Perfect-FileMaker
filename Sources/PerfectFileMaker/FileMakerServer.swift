@@ -17,32 +17,29 @@
 //===----------------------------------------------------------------------===//
 //
 
-import PerfectLib
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import PerfectXML
-import PerfectCURL
-import cURL
 
 extension XNode {
 	var childElements: [XElement] {
-		#if swift(>=4.1)
-			return self.childNodes.compactMap { $0 as? XElement }
-		#else
-			return self.childNodes.flatMap { $0 as? XElement }
-		#endif
+		self.childNodes.compactMap { $0 as? XElement }
 	}
 }
 
+// Only the "fmresultset" grammar (find/new/edit/delete results) is
+// implemented — the FMPXMLLAYOUT grammar (full layout/value-list/picklist
+// introspection) was never wired up in the original library either (its
+// XPath constants existed but nothing referenced them, and neither the
+// README nor the tests mention it). Deliberately not building it out
+// during this modernization pass: doing so with zero real-server corpus
+// to validate correctness against would be speculative feature
+// completion, not a port. Revisit only if a real need appears.
 enum FMPGrammar: String {
 	case fmResultSet = "fmresultset"
 }
-
-let fmpxl = "fmpxl"
-let fmpxlNamespaces = [(fmpxl, "http://www.filemaker.com/fmpxmllayout")]
-let fmpxlErrorCode = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):ERRORCODE/text()"
-let fmpxlField = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):LAYOUT/\(fmpxl):FIELD"
-let fmpxlStyle = "\(fmpxl):STYLE"
-let fmpxlValueLists = "/\(fmpxl):FMPXMLLAYOUT/\(fmpxl):VALUELISTS/\(fmpxl):VALUELIST"
-let fmpxlValue = "\(fmpxl):VALUE"
 
 public enum FMPError: Error {
 	/// An error code and message.
@@ -50,35 +47,66 @@ public enum FMPError: Error {
 }
 
 /// A connection to a FileMaker Server instance.
-public struct FileMakerServer {
+public struct FileMakerServer: Sendable {
 	let host: String
 	let port: Int
 	let userName: String
 	let password: String
-	
+	/// `nil` (the default) infers `https` only when `port == 443`,
+	/// matching this library's original behavior — real deployments
+	/// sometimes run FileMaker Server's classic XML Web Publishing over
+	/// plain HTTP on a trusted internal network, so this isn't hard-
+	/// blocked. Set explicitly to make the choice observable rather than
+	/// relying on a magic port number; see `effectiveUseTLS`.
+	let useTLS: Bool?
+	let urlSession: URLSession
+
 	/// Initialize using a host, port, username and password.
-	public init(host: String, port: Int, userName: String, password: String) {
+	/// `urlSession` defaults to `.shared`; inject a session configured
+	/// with a `URLProtocol` mock for testing (matching this ecosystem's
+	/// established pattern in `Perfect-AuthNet`/`Perfect-FileMaker-DataAPI`).
+	public init(
+		host: String, port: Int, userName: String, password: String,
+		useTLS: Bool? = nil, urlSession: URLSession = .shared
+	) {
 		self.host = host
 		self.port = port
 		self.userName = userName
 		self.password = password
+		self.useTLS = useTLS
+		self.urlSession = urlSession
 	}
-	
-	func makeUrl(grammar: FMPGrammar) -> String {
-		let scheme = port == 443 ? "https" : "http"
-		let url = "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml"
-		return url
+
+	var effectiveUseTLS: Bool {
+		useTLS ?? (port == 443)
 	}
-	
-	func makeCURL(url: String) -> CURL {
-		let curl = CURL(url: url)
+
+	func makeURL(grammar: FMPGrammar) -> URL? {
+		let scheme = effectiveUseTLS ? "https" : "http"
+		return URL(string: "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml")
+	}
+
+	func makeRequest(url: URL) -> URLRequest {
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/x-www-form-urlencoded;charset=UTF-8", forHTTPHeaderField: "Content-Type")
 		if !userName.isEmpty {
-			curl.setOption(CURLOPT_USERNAME, s: userName)
-			curl.setOption(CURLOPT_PASSWORD, s: password)
+			if !effectiveUseTLS {
+				// Not a hard failure — some deployments genuinely run
+				// FileMaker Server's classic XML Web Publishing over
+				// plain HTTP on a trusted internal network — but
+				// transiting Basic-Auth credentials in cleartext should
+				// never be silent.
+				FileHandle.standardError.write(Data(
+					"PerfectFileMaker: sending credentials to \(url.absoluteString) over plain HTTP (useTLS not set and port != 443).\n".utf8
+				))
+			}
+			let credentials = Data("\(userName):\(password)".utf8).base64EncodedString()
+			request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
 		}
-		return curl
+		return request
 	}
-	
+
 	func checkError(doc: XDocument, xpath: String, namespaces: [(String, String)]) -> Int {
 		guard let errorNode = doc.extractOne(path: xpath, namespaces: namespaces),
 			let nodeValue = errorNode.nodeValue,
@@ -87,43 +115,41 @@ public struct FileMakerServer {
 		}
 		return errorCode
 	}
-	
-	func performRequest(query: String, grammar: FMPGrammar, callback: @escaping (() throws -> FMPResultSet) -> ()) {
-		let curl = makeCURL(url: makeUrl(grammar: grammar))
-				
-		let byteArray = [UInt8](query.utf8)
-		curl.setOption(CURLOPT_POST, int: 1)
-		curl.setOption(CURLOPT_POSTFIELDSIZE, int: byteArray.count)
-		curl.setOption(CURLOPT_COPYPOSTFIELDS, v: UnsafeMutablePointer(mutating: byteArray))
-		curl.setOption(CURLOPT_HTTPHEADER, s: "Content-Type: application/x-www-form-urlencoded;charset=UTF-8" )
-		
-		curl.perform {
-			code, header, body in
-			guard curl.responseCode == 200 else {
-				return callback({ throw FMPError.serverError(curl.responseCode, "Bad response") })
-			}
-			let bodyString = UTF8Encoding.encode(bytes: body)
-			guard let doc = XDocument(fromSource: bodyString) else {
-				return callback({ throw FMPError.serverError(500, "Bad response") })
-			}
-			switch grammar {
-			case .fmResultSet: self.processGrammar_FMPResultSet(doc: doc, callback: callback)
-			}
+
+	func performRequest(query: String, grammar: FMPGrammar) async throws -> FMPResultSet {
+		guard let url = makeURL(grammar: grammar) else {
+			throw FMPError.serverError(500, "Invalid FileMaker Server URL")
+		}
+		var request = makeRequest(url: url)
+		request.httpBody = Data(query.utf8)
+
+		let (body, response) = try await urlSession.data(for: request)
+		guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+			let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+			throw FMPError.serverError(statusCode, "Bad response")
+		}
+		guard let bodyString = String(data: body, encoding: .utf8),
+			let doc = XDocument(fromSource: bodyString) else {
+			throw FMPError.serverError(500, "Bad response")
+		}
+		switch grammar {
+		case .fmResultSet:
+			return try processGrammar_FMPResultSet(doc: doc)
 		}
 	}
-	
-	func processGrammar_FMPResultSet(doc: XDocument, callback: (() throws -> FMPResultSet) -> ()) {
+
+	func processGrammar_FMPResultSet(doc: XDocument) throws -> FMPResultSet {
 		let errorCode = checkError(doc: doc, xpath: fmrsErrorCode, namespaces: fmrsNamespaces)
 		guard errorCode == 0 || errorCode == 200 else {
-			return callback({ throw FMPError.serverError(errorCode, "Error from FileMaker server") })
+			throw FMPError.serverError(errorCode, "Error from FileMaker server")
 		}
 		guard let result = FMPResultSet(doc: doc) else {
-			return callback({ throw FMPError.serverError(500, "Invalid response from FileMaker server") })
+			throw FMPError.serverError(500, "Invalid response from FileMaker server")
 		}
-		callback({ return result })
+		return result
 	}
-	
-	func setToNames(result: FMPResultSet, key: String, completion: @escaping (() throws -> [String]) -> ()) {
+
+	func names(from result: FMPResultSet, key: String) -> [String] {
 		var names = [String]()
 		for rec in result.records {
 			guard let field = rec.elements[key],
@@ -132,58 +158,32 @@ public struct FileMakerServer {
 			}
 			names.append("\(value)")
 		}
-		return completion({ return names })
+		return names
 	}
-	
-	/// Retrieve the list of database hosted by the server.
-	public func databaseNames(completion: @escaping (() throws -> [String]) -> ()) {
-		performRequest(query: "-dbnames", grammar: .fmResultSet) {
-			result in
-			do {
-				self.setToNames(result: try result(), key: "DATABASE_NAME", completion: completion)
-			} catch let e {
-				completion({ throw e })
-			}
-		}
+
+	/// Retrieve the list of databases hosted by the server.
+	public func databaseNames() async throws -> [String] {
+		let result = try await performRequest(query: "-dbnames", grammar: .fmResultSet)
+		return names(from: result, key: "DATABASE_NAME")
 	}
 
 	/// Retrieve the list of layouts for a particular database.
-	public func layoutNames(database: String, completion: @escaping (() throws -> [String]) -> ()) {
-		performRequest(query: "-db=\(database.stringByEncodingURL)&-layoutnames", grammar: .fmResultSet) {
-			result in
-			do {
-				self.setToNames(result: try result(), key: "LAYOUT_NAME", completion: completion)
-			} catch let e {
-				completion({ throw e })
-			}
-		}
+	public func layoutNames(database: String) async throws -> [String] {
+		let result = try await performRequest(query: "-db=\(database.fmpEscaped)&-layoutnames", grammar: .fmResultSet)
+		return names(from: result, key: "LAYOUT_NAME")
 	}
-	
-	/// Get a database's layout information. Includes all field and portal names.
-	public func layoutInfo(database: String,
-	                       layout: String,
-	                       completion: @escaping (() throws -> FMPLayoutInfo) -> ()) {
-		performRequest(query: "-db=\(database.stringByEncodingURL)&-lay=\(layout.stringByEncodingURL)&-view", grammar: .fmResultSet) {
-			result in
-			do {
-				let layoutInfo = try result().layoutInfo
-				return completion({ return layoutInfo })
-			} catch let e {
-				completion({ throw e })
-			}
-		}
-	}
-	
-	/// Perform a query and provide any resulting data. 
-	public func query(_ query: FMPQuery, completion: @escaping (() throws -> FMPResultSet) -> ()) {
-		let queryString = query.queryString
-		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)
-	}
-	
-	/// Perform the queries and provide the resulting data.
-//	public func query(_ query: [FMPQuery], completion: @escaping (() throws -> FMPResultSet) -> ()) {
-//		let queryString = query.queryString
-//		performRequest(query: queryString, grammar: .fmResultSet, callback: completion)
-//	}
-}
 
+	/// Get a database's layout information. Includes all field and portal names.
+	public func layoutInfo(database: String, layout: String) async throws -> FMPLayoutInfo {
+		let result = try await performRequest(
+			query: "-db=\(database.fmpEscaped)&-lay=\(layout.fmpEscaped)&-view",
+			grammar: .fmResultSet
+		)
+		return result.layoutInfo
+	}
+
+	/// Perform a query and return the resulting data.
+	public func query(_ query: FMPQuery) async throws -> FMPResultSet {
+		try await performRequest(query: query.queryString, grammar: .fmResultSet)
+	}
+}
