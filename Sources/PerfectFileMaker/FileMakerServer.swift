@@ -81,39 +81,33 @@ public struct FileMakerServer: Sendable {
 		useTLS ?? (port == 443)
 	}
 
-	// GET with the query in the URL, not POST with the query as the body.
-	// Every official FileMaker Custom Web Publishing (XML) example uses
-	// `GET /fmi/xml/fmresultset.xml?-db=...&-lay=...&-findall` — this
-	// library originally POSTed the identical query string as the request
-	// body instead. That divergence is what made every request against a
-	// real FileMaker Server v16/19 instance come back as the server's own
-	// generic Administration Console fallback error page (an HTML
-	// "http.401" page) instead of a real `<fmresultset>` XML response,
-	// even with correct credentials — live-verified (2026-07-17): a real
-	// Lasso Server installation on the same machine, same credentials,
-	// same host, succeeds instantly; this library's POST-based request
-	// consistently failed to reach the Web Publishing Engine at all.
-	// Switching to GET-with-query-string, with everything else held
-	// identical, immediately returned a real, successful `error code="0"`
-	// result set. FileMaker Server's front-end web layer (which also
-	// serves the Admin Console) very likely pattern-matches XML CWP
-	// requests by their URL query string — a POST with an empty URL
-	// query string doesn't match that route and falls through to the
-	// Admin Console's own default error handler, which is exactly the
-	// observed symptom.
-	// `query`'s own escaping (`String.fmpEscaped`, see `FMPQuery.swift`)
-	// already percent-encodes every byte outside the RFC-3986-unreserved
-	// set — the same escaping a URL query string requires — so the
-	// identical already-built string is safe to append directly after
-	// `?` with no re-encoding.
-	func makeURL(grammar: FMPGrammar, query: String) -> URL? {
+	// POST, with the query as the request body — deliberately *not* GET
+	// with the query in the URL, even though every official FileMaker
+	// Custom Web Publishing (XML) example shows the GET form. Query
+	// values can include credential-adjacent data (e.g. a password-
+	// derived lookup value from a login page); putting that in a URL
+	// means it lands in every URL-based log along the way — this
+	// library's own plain-HTTP warning line below (which logs
+	// `url.absoluteString`) went from logging just the bare endpoint to
+	// logging the entire query, live-confirmed (2026-07-17), the moment
+	// GET was briefly tried — and FileMaker Server's own front-end web
+	// server almost certainly logs full request URLs too, completely
+	// outside this library's control. A POST body doesn't get logged by
+	// either. (GET was tried first because a real FileMaker Server
+	// connectivity outage was initially suspected to be caused by this
+	// POST-vs-GET divergence; further live testing showed the outage was
+	// unrelated — POST works reliably once the server itself is
+	// healthy — so there was no connectivity reason left to accept the
+	// security cost of GET.)
+	func makeURL(grammar: FMPGrammar) -> URL? {
 		let scheme = effectiveUseTLS ? "https" : "http"
-		return URL(string: "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml?\(query)")
+		return URL(string: "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml")
 	}
 
 	func makeRequest(url: URL) -> URLRequest {
 		var request = URLRequest(url: url)
-		request.httpMethod = "GET"
+		request.httpMethod = "POST"
+		request.setValue("application/x-www-form-urlencoded;charset=UTF-8", forHTTPHeaderField: "Content-Type")
 		// Classic XML Web Publishing has no explicit login/logout — the
 		// only session-lifecycle signal a client can give the Web
 		// Publishing Engine is the underlying HTTP connection itself.
@@ -154,10 +148,11 @@ public struct FileMakerServer: Sendable {
 	}
 
 	func performRequest(query: String, grammar: FMPGrammar) async throws -> FMPResultSet {
-		guard let url = makeURL(grammar: grammar, query: query) else {
+		guard let url = makeURL(grammar: grammar) else {
 			throw FMPError.serverError(500, "Invalid FileMaker Server URL")
 		}
-		let request = makeRequest(url: url)
+		var request = makeRequest(url: url)
+		request.httpBody = Data(query.utf8)
 
 		let (body, response) = try await urlSession.data(for: request)
 		guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {

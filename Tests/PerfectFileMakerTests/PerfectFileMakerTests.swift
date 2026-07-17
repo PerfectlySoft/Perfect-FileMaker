@@ -300,20 +300,23 @@ struct MockedFileMakerServerTests {
         #expect(captured.value == "close")
     }
 
-    @Test func requestUsesGETWithQueryInTheURLNotPOSTWithABody() async throws {
-        // Live-verified (2026-07-17) against a real FileMaker Server
-        // v16/19 XML Custom Web Publishing endpoint: sending the query as
-        // a POST body (this library's original behavior, matching the
-        // rest of this ecosystem's REST-ish conventions but not what XML
-        // CWP actually expects) made every request come back as
-        // FileMaker Server's own generic Administration Console fallback
-        // error page ("http.401") instead of a real `<fmresultset>` XML
-        // response — even with correct credentials, confirmed by a real
-        // Lasso Server installation on the same machine reaching the
-        // same server successfully via the documented GET-with-URL-query
-        // form. Every official XML CWP example uses `GET
-        // /fmi/xml/fmresultset.xml?-db=...&-lay=...&-findall`, never a
-        // POST body.
+    @Test func requestSendsQueryAsPOSTBodyNotURLQueryString() async throws {
+        // XML Custom Web Publishing over plain HTTP puts search/field
+        // values (which can include credential-adjacent data — a
+        // password-derived lookup value on a login page, for example)
+        // into the query. A GET-with-URL-query request (briefly tried
+        // 2026-07-17, then reverted) puts that same data somewhere every
+        // web server, proxy, and this library's own plain-HTTP warning
+        // log line records verbatim — a real regression, confirmed live:
+        // this exact warning line went from logging just the bare
+        // endpoint URL to logging the entire query, credentials-adjacent
+        // values included. POST keeps the query out of any URL-based
+        // logging. (Separately: GET was originally suspected of fixing a
+        // FileMaker Server connectivity outage this same query string
+        // caused; further live testing showed the outage was unrelated
+        // to GET vs. POST — POST works reliably once the server itself
+        // is healthy — so there was no connectivity reason to keep GET
+        // once the security cost was found.)
         let captured = CapturedValueBox()
         MockURLProtocol.lastBody = nil
         MockURLProtocol.requestHandler = { req, body in
@@ -327,11 +330,19 @@ struct MockedFileMakerServerTests {
         let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
         _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
 
-        #expect(captured.value == "GET")
-        #expect(MockURLProtocol.lastBody == nil || MockURLProtocol.lastBody == Data())
+        #expect(captured.value == "POST")
+        #expect(MockURLProtocol.lastBody?.isEmpty == false)
+        let bodyString = String(data: MockURLProtocol.lastBody ?? Data(), encoding: .utf8)
+        #expect(bodyString?.contains("-db=TestDB") == true)
+        #expect(bodyString?.contains("-lay=TestLayout") == true)
+        #expect(bodyString?.contains("-findall") == true)
     }
 
-    @Test func requestQueryStringAppearsInTheURLNotTheBody() async throws {
+    @Test func requestURLNeverContainsTheQuery() async throws {
+        // The plain-HTTP credential warning below logs `url.absoluteString`
+        // verbatim — this test guards against a query string ever ending
+        // up in the URL (and therefore in that log line, or any other
+        // URL-based logging FileMaker Server's own web layer does).
         let captured = CapturedValueBox()
         MockURLProtocol.lastBody = nil
         MockURLProtocol.requestHandler = { req, _ in
@@ -345,9 +356,7 @@ struct MockedFileMakerServerTests {
         let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
         _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
 
-        #expect(captured.value?.contains("-db=TestDB") == true)
-        #expect(captured.value?.contains("-lay=TestLayout") == true)
-        #expect(captured.value?.contains("-findall") == true)
+        #expect(captured.value == nil)
     }
 }
 
