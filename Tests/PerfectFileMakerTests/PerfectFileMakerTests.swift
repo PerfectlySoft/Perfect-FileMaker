@@ -274,6 +274,81 @@ struct MockedFileMakerServerTests {
 
         #expect(captured.value == nil)
     }
+
+    @Test func requestSendsConnectionCloseToAvoidLeakingWebPublishingSessions() async throws {
+        // Classic XML Web Publishing has no login/logout call, so the
+        // underlying HTTP connection is the only session-lifecycle signal
+        // a client can give — without this header, URLSession's default
+        // keep-alive leaves connections (and the Web Publishing Engine
+        // sessions tracked against them) open indefinitely. Real-world
+        // symptom: FileMaker Server's admin console showing dozens of
+        // still-"open" client connections from a server that made one
+        // request per connection, spread out over many minutes.
+        let captured = CapturedValueBox()
+        MockURLProtocol.lastBody = nil
+        MockURLProtocol.requestHandler = { req, _ in
+            captured.value = req.value(forHTTPHeaderField: "Connection")
+            let http = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (http, Data(sampleResultSetXML.utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
+        _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
+
+        #expect(captured.value == "close")
+    }
+
+    @Test func requestUsesGETWithQueryInTheURLNotPOSTWithABody() async throws {
+        // Live-verified (2026-07-17) against a real FileMaker Server
+        // v16/19 XML Custom Web Publishing endpoint: sending the query as
+        // a POST body (this library's original behavior, matching the
+        // rest of this ecosystem's REST-ish conventions but not what XML
+        // CWP actually expects) made every request come back as
+        // FileMaker Server's own generic Administration Console fallback
+        // error page ("http.401") instead of a real `<fmresultset>` XML
+        // response — even with correct credentials, confirmed by a real
+        // Lasso Server installation on the same machine reaching the
+        // same server successfully via the documented GET-with-URL-query
+        // form. Every official XML CWP example uses `GET
+        // /fmi/xml/fmresultset.xml?-db=...&-lay=...&-findall`, never a
+        // POST body.
+        let captured = CapturedValueBox()
+        MockURLProtocol.lastBody = nil
+        MockURLProtocol.requestHandler = { req, body in
+            captured.value = req.httpMethod
+            let http = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (http, Data(sampleResultSetXML.utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
+        _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
+
+        #expect(captured.value == "GET")
+        #expect(MockURLProtocol.lastBody == nil || MockURLProtocol.lastBody == Data())
+    }
+
+    @Test func requestQueryStringAppearsInTheURLNotTheBody() async throws {
+        let captured = CapturedValueBox()
+        MockURLProtocol.lastBody = nil
+        MockURLProtocol.requestHandler = { req, _ in
+            captured.value = req.url?.query
+            let http = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (http, Data(sampleResultSetXML.utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
+        _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
+
+        #expect(captured.value?.contains("-db=TestDB") == true)
+        #expect(captured.value?.contains("-lay=TestLayout") == true)
+        #expect(captured.value?.contains("-findall") == true)
+    }
 }
 
 // MARK: - Live FileMaker Server integration tests (FILEMAKER_TESTS=1)

@@ -81,15 +81,52 @@ public struct FileMakerServer: Sendable {
 		useTLS ?? (port == 443)
 	}
 
-	func makeURL(grammar: FMPGrammar) -> URL? {
+	// GET with the query in the URL, not POST with the query as the body.
+	// Every official FileMaker Custom Web Publishing (XML) example uses
+	// `GET /fmi/xml/fmresultset.xml?-db=...&-lay=...&-findall` — this
+	// library originally POSTed the identical query string as the request
+	// body instead. That divergence is what made every request against a
+	// real FileMaker Server v16/19 instance come back as the server's own
+	// generic Administration Console fallback error page (an HTML
+	// "http.401" page) instead of a real `<fmresultset>` XML response,
+	// even with correct credentials — live-verified (2026-07-17): a real
+	// Lasso Server installation on the same machine, same credentials,
+	// same host, succeeds instantly; this library's POST-based request
+	// consistently failed to reach the Web Publishing Engine at all.
+	// Switching to GET-with-query-string, with everything else held
+	// identical, immediately returned a real, successful `error code="0"`
+	// result set. FileMaker Server's front-end web layer (which also
+	// serves the Admin Console) very likely pattern-matches XML CWP
+	// requests by their URL query string — a POST with an empty URL
+	// query string doesn't match that route and falls through to the
+	// Admin Console's own default error handler, which is exactly the
+	// observed symptom.
+	// `query`'s own escaping (`String.fmpEscaped`, see `FMPQuery.swift`)
+	// already percent-encodes every byte outside the RFC-3986-unreserved
+	// set — the same escaping a URL query string requires — so the
+	// identical already-built string is safe to append directly after
+	// `?` with no re-encoding.
+	func makeURL(grammar: FMPGrammar, query: String) -> URL? {
 		let scheme = effectiveUseTLS ? "https" : "http"
-		return URL(string: "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml")
+		return URL(string: "\(scheme)://\(host):\(port)/fmi/xml/\(grammar.rawValue).xml?\(query)")
 	}
 
 	func makeRequest(url: URL) -> URLRequest {
 		var request = URLRequest(url: url)
-		request.httpMethod = "POST"
-		request.setValue("application/x-www-form-urlencoded;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+		request.httpMethod = "GET"
+		// Classic XML Web Publishing has no explicit login/logout — the
+		// only session-lifecycle signal a client can give the Web
+		// Publishing Engine is the underlying HTTP connection itself.
+		// `URLSession.shared`'s default keep-alive behavior leaves that
+		// connection open for reuse after each response, which the Web
+		// Publishing Engine tracks as an ongoing client session; for a
+		// long-running server making occasional, spread-out requests
+		// (not a tight request loop that benefits from reuse), those
+		// accumulate as connections FileMaker Server's own admin console
+		// shows as still "open" long after their one request finished.
+		// Forcing closure here trades a per-request TCP handshake for
+		// guaranteed cleanup — the right tradeoff for this workload.
+		request.setValue("close", forHTTPHeaderField: "Connection")
 		if !userName.isEmpty {
 			if !effectiveUseTLS {
 				// Not a hard failure — some deployments genuinely run
@@ -117,11 +154,10 @@ public struct FileMakerServer: Sendable {
 	}
 
 	func performRequest(query: String, grammar: FMPGrammar) async throws -> FMPResultSet {
-		guard let url = makeURL(grammar: grammar) else {
+		guard let url = makeURL(grammar: grammar, query: query) else {
 			throw FMPError.serverError(500, "Invalid FileMaker Server URL")
 		}
-		var request = makeRequest(url: url)
-		request.httpBody = Data(query.utf8)
+		let request = makeRequest(url: url)
 
 		let (body, response) = try await urlSession.data(for: request)
 		guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
