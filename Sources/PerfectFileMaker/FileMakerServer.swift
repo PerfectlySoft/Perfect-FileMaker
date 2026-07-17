@@ -60,6 +60,24 @@ public struct FileMakerServer: Sendable {
 	/// relying on a magic port number; see `effectiveUseTLS`.
 	let useTLS: Bool?
 	let urlSession: URLSession
+	/// Applied to every request whose call site doesn't pass its own
+	/// `timeout:` override (see each public method below). No prior
+	/// version of this library set an explicit request timeout at all —
+	/// every outbound request silently fell back to `URLSession`'s own
+	/// default (`timeoutIntervalForRequest`, 60 seconds). Live-confirmed
+	/// (2026-07-17) as a real contributor to FileMaker Server Web
+	/// Publishing Engine session buildup under crawl-style load: a
+	/// calling application can reasonably give up on a slow response
+	/// well before 60 seconds (`LassoCrawlReport`'s crawler times out
+	/// after 15s, for example) — when it does, this library's own
+	/// request kept running in the background regardless, for up to the
+	/// rest of that 60 seconds, holding its WPE session open the whole
+	/// time. 5 seconds is a deliberately short default that fails fast
+	/// for ordinary lookups; call sites with a real reason to expect a
+	/// slower response (a large-dataset query, or one that triggers a
+	/// FileMaker script) should pass an explicit longer `timeout:` to
+	/// the specific call that needs it, not raise this default globally.
+	public let defaultTimeout: TimeInterval
 
 	/// Initialize using a host, port, username and password.
 	/// `urlSession` defaults to `.shared`; inject a session configured
@@ -67,7 +85,8 @@ public struct FileMakerServer: Sendable {
 	/// established pattern in `Perfect-AuthNet`/`Perfect-FileMaker-DataAPI`).
 	public init(
 		host: String, port: Int, userName: String, password: String,
-		useTLS: Bool? = nil, urlSession: URLSession = .shared
+		useTLS: Bool? = nil, urlSession: URLSession = .shared,
+		defaultTimeout: TimeInterval = 5
 	) {
 		self.host = host
 		self.port = port
@@ -75,6 +94,7 @@ public struct FileMakerServer: Sendable {
 		self.password = password
 		self.useTLS = useTLS
 		self.urlSession = urlSession
+		self.defaultTimeout = defaultTimeout
 	}
 
 	var effectiveUseTLS: Bool {
@@ -107,6 +127,11 @@ public struct FileMakerServer: Sendable {
 	func makeRequest(url: URL) -> URLRequest {
 		var request = URLRequest(url: url)
 		request.httpMethod = "POST"
+		// No prior version of this library set an explicit timeout — every
+		// request silently used URLSession's own 60-second default. See
+		// `defaultTimeout`'s own doc comment for why that's a real problem
+		// under crawl-style load, not just theoretical.
+		request.timeoutInterval = defaultTimeout
 		request.setValue("application/x-www-form-urlencoded;charset=UTF-8", forHTTPHeaderField: "Content-Type")
 		// Classic XML Web Publishing has no explicit login/logout — the
 		// only session-lifecycle signal a client can give the Web

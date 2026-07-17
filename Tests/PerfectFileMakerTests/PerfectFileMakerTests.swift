@@ -338,6 +338,59 @@ struct MockedFileMakerServerTests {
         #expect(bodyString?.contains("-findall") == true)
     }
 
+    @Test func requestDefaultsToAFiveSecondTimeoutNotURLSessionsSixty() async throws {
+        // No prior version of this library set an explicit timeout — every
+        // request silently used URLSession's own 60-second default.
+        // Live-confirmed (2026-07-17) as a real contributor to FileMaker
+        // Server Web Publishing Engine session buildup under crawl-style
+        // load: a calling application reasonably gives up on a slow
+        // response well before 60 seconds, but this library's own request
+        // kept running in the background regardless, holding its WPE
+        // session open the whole time.
+        final class TimeoutBox: @unchecked Sendable {
+            var value: TimeInterval?
+        }
+        let captured = TimeoutBox()
+        MockURLProtocol.lastBody = nil
+        MockURLProtocol.requestHandler = { req, _ in
+            captured.value = req.timeoutInterval
+            let http = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (http, Data(sampleResultSetXML.utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session)
+        _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
+
+        #expect(captured.value == 5)
+    }
+
+    @Test func requestHonorsAnExplicitDefaultTimeoutOverride() async throws {
+        // A large-dataset query or one that triggers a FileMaker script
+        // legitimately needs longer than the 5-second default — a
+        // consumer that knows this ahead of time constructs its
+        // `FileMakerServer` with a longer `defaultTimeout` for that
+        // specific connection.
+        final class TimeoutBox: @unchecked Sendable {
+            var value: TimeInterval?
+        }
+        let captured = TimeoutBox()
+        MockURLProtocol.lastBody = nil
+        MockURLProtocol.requestHandler = { req, _ in
+            captured.value = req.timeoutInterval
+            let http = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (http, Data(sampleResultSetXML.utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = FileMakerServer(host: "mock.example", port: 443, userName: "user", password: "pass", urlSession: session, defaultTimeout: 30)
+        _ = try await server.query(FMPQuery(database: "TestDB", layout: "TestLayout", action: .findAll))
+
+        #expect(captured.value == 30)
+    }
+
     @Test func requestURLNeverContainsTheQuery() async throws {
         // The plain-HTTP credential warning below logs `url.absoluteString`
         // verbatim — this test guards against a query string ever ending
