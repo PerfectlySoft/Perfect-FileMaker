@@ -43,7 +43,7 @@ This project provides access to FileMaker Server databases using the classic XML
 
 ## About This Fork
 
-This package is part of the **Perfect-Resurrection** project (a modernization of the original [PerfectlySoft/Perfect](https://github.com/PerfectlySoft/Perfect) ecosystem for current Swift). It is **not** a dormant or example-only library: it is the core, currently-live FileMaker CWP datasource consumed directly by [Perfect-Lasso](https://github.com/taplin) for a real production e-commerce site. If you're evaluating whether this is safe to depend on, treat it as production-tested infrastructure rather than a leaf/experimental package.
+This package is part of the **Perfect-Resurrection** project (a modernization of the original [PerfectlySoft/Perfect](https://github.com/PerfectlySoft/Perfect) ecosystem for current Swift). It is **not** a dormant or example-only library: it is the core FileMaker CWP datasource consumed directly by [Perfect-Lasso](https://github.com/taplin), a Swift reimplementation of the Lasso language that has been extensively validated against real, unmodified Lasso code from multiple production e-commerce sites (Perfect-Lasso itself is still in active development and is not yet production-ready). If you're evaluating whether this is safe to depend on, treat it as validation-tested infrastructure rather than a leaf/experimental package.
 
 It was written to be stand-alone and does not need to be run as part of a Perfect server application.
 
