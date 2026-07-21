@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "PerfectFileMaker", targets: ["PerfectFileMaker"]),
     ],
     dependencies: [
-        .package(path: "../Perfect-XML"),
+        .package(url: "https://github.com/taplin/Perfect-XML.git", branch: "main"),
     ],
     targets: [
         .target(

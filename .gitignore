@@ -70,3 +70,5 @@ PawTesting.paw
 .DS_Store
 Package.pins
 *.resolved
+# Local SwiftPM dependency mirrors (machine-specific absolute paths, never commit)
+.swiftpm/
