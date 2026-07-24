@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PerfectFileMaker",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v12)],
     products: [
         .library(name: "PerfectFileMaker", targets: ["PerfectFileMaker"]),
     ],
