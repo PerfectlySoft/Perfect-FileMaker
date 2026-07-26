@@ -26,7 +26,7 @@
         <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
     </a>
     <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Platforms-macOS%2026%2B-lightgray.svg?style=flat" alt="Platforms macOS 26+">
+        <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
     </a>
     <a href="LICENSE" target="_blank">
         <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0">
@@ -50,21 +50,19 @@ It was written to be stand-alone and does not need to be run as part of a Perfec
 ## Requirements
 
 - Swift tools version **6.2** (see `Package.swift`'s `swift-tools-version`)
-- **macOS 26** or later — this is the only platform formally declared in `Package.swift`'s `platforms` array
+- **macOS 12** or later — this is the only platform formally declared in `Package.swift`'s `platforms` array
 
 The source still guards its networking import with `#if canImport(FoundationNetworking)` for portability, but Linux is not currently a declared/supported SPM platform for this package — treat Linux support as unverified rather than assume the old Linux build notes below still apply.
 
 ## Building
 
-This package is consumed within the Perfect-Resurrection ecosystem as a local sibling-directory path dependency, the same pattern used by its own dependency on Perfect-XML:
-
 ```swift
-.package(path: "../Perfect-FileMaker")
+.package(url: "https://github.com/taplin/Perfect-FileMaker.git", branch: "main")
 ```
 
-It in turn requires [Perfect-XML](https://github.com/taplin/Perfect-XML) checked out as a sibling directory (`.package(path: "../Perfect-XML")` in this package's own `Package.swift`) — the two repos must live next to each other on disk for this to resolve.
+This package's own `Package.swift` resolves its [Perfect-XML](https://github.com/taplin/Perfect-XML) dependency the same way (`.package(url:, branch: "main")`), not a local sibling checkout — no monorepo layout is required to build either repo.
 
-If publishing this fork as a standalone package consumed via a git URL instead, point at this repository (not the original `PerfectlySoft/Perfect-FileMaker`, which predates the Swift 6 rewrite and does not have the current async API).
+Point at this repository, not the original `PerfectlySoft/Perfect-FileMaker`, which predates the Swift 6 rewrite and does not have the current async API.
 
 ## Dependencies
 
