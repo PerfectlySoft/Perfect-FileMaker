@@ -1,51 +1,18 @@
 # Perfect - FileMaker Server Connector
 
 <p align="center">
-    <a href="http://perfect.org/get-involved.html" target="_blank">
-        <img src="http://perfect.org/assets/github/perfect_github_2_0_0.jpg" alt="Get Involed with Perfect!" width="854" />
-    </a>
+    <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0"></a>
 </p>
 
-<p align="center">
-    <a href="https://github.com/PerfectlySoft/Perfect" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_1_Star.jpg" alt="Star Perfect On Github" />
-    </a>  
-    <a href="http://stackoverflow.com/questions/tagged/perfect" target="_blank">
-        <img src="http://www.perfect.org/github/perfect_gh_button_2_SO.jpg" alt="Stack Overflow" />
-    </a>  
-    <a href="https://twitter.com/perfectlysoft" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_3_twit.jpg" alt="Follow Perfect on Twitter" />
-    </a>  
-    <a href="http://perfect.ly" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_4_slack.jpg" alt="Join the Perfect Slack" />
-    </a>
-</p>
+This project provides access to FileMaker Server databases using the classic XML Custom Web Publishing (CWP) interface (the `fmresultset` grammar) — listing databases, layouts, and fields, and running `find`/`findAll` queries. It was written to be stand-alone and does not need to be run as part of a Perfect server application.
 
-<p align="center">
-    <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
-    </a>
-    <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
-    </a>
-    <a href="LICENSE" target="_blank">
-        <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0">
-    </a>
-    <a href="http://twitter.com/PerfectlySoft" target="_blank">
-        <img src="https://img.shields.io/badge/Twitter-@PerfectlySoft-blue.svg?style=flat" alt="PerfectlySoft Twitter">
-    </a>
-    <a href="http://perfect.ly" target="_blank">
-        <img src="http://perfect.ly/badge.svg" alt="Slack Status">
-    </a>
-</p>
+**Modernized for Swift 6.** A real query-injection gap in the original percent-encoder was found
+and fixed during modernization — see the security note in the changelog/commit history if you're
+evaluating this as a trust boundary.
 
-This project provides access to FileMaker Server databases using the classic XML Custom Web Publishing (CWP) interface (the `fmresultset` grammar) — listing databases, layouts, and fields, and running `find`/`findAll` queries.
-
-## About This Fork
-
-This package is part of the **Perfect-Resurrection** project (a modernization of the original [PerfectlySoft/Perfect](https://github.com/PerfectlySoft/Perfect) ecosystem for current Swift). It is **not** a dormant or example-only library: it is the core FileMaker CWP datasource consumed directly by [Perfect-Lasso](https://github.com/taplin), a Swift reimplementation of the Lasso language that has been extensively validated against real, unmodified Lasso code from multiple production e-commerce sites (Perfect-Lasso itself is still in active development and is not yet production-ready). If you're evaluating whether this is safe to depend on, treat it as validation-tested infrastructure rather than a leaf/experimental package.
-
-It was written to be stand-alone and does not need to be run as part of a Perfect server application.
+The pre-Swift-6 version of this package is preserved on the [`legacy`](../../tree/legacy) branch.
 
 ## Requirements
 
@@ -57,16 +24,14 @@ The source still guards its networking import with `#if canImport(FoundationNetw
 ## Building
 
 ```swift
-.package(url: "https://github.com/taplin/Perfect-FileMaker.git", branch: "main")
+.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", branch: "main")
 ```
 
-This package's own `Package.swift` resolves its [Perfect-XML](https://github.com/taplin/Perfect-XML) dependency the same way (`.package(url:, branch: "main")`), not a local sibling checkout — no monorepo layout is required to build either repo.
-
-Point at this repository, not the original `PerfectlySoft/Perfect-FileMaker`, which predates the Swift 6 rewrite and does not have the current async API.
+This package's own `Package.swift` resolves its [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) dependency the same way (`.package(url:, branch: "main")`) — no monorepo layout is required to build either repo.
 
 ## Dependencies
 
-- [Perfect-XML](https://github.com/taplin/Perfect-XML) (local path dependency) — used for parsing the `fmresultset` and `FMPXMLLAYOUT` XML responses.
+- [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) — used for parsing the `fmresultset` and `FMPXMLLAYOUT` XML responses.
 
 Networking is done directly via Foundation's `URLSession`/`URLRequest` — there is **no Perfect-CURL dependency** and no libcurl requirement. Query requests are deliberately sent as `POST` rather than `GET`, to avoid credential-adjacent query values leaking into URL logs, with a default 5-second request timeout and forced connection closure — added specifically to prevent FileMaker Web Publishing Engine session buildup under crawl-style load.
 
