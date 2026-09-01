@@ -1,69 +1,47 @@
 # Perfect - FileMaker Server Connector
 
 <p align="center">
-    <a href="http://perfect.org/get-involved.html" target="_blank">
-        <img src="http://perfect.org/assets/github/perfect_github_2_0_0.jpg" alt="Get Involed with Perfect!" width="854" />
-    </a>
+    <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0"></a>
 </p>
 
-<p align="center">
-    <a href="https://github.com/PerfectlySoft/Perfect" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_1_Star.jpg" alt="Star Perfect On Github" />
-    </a>  
-    <a href="http://stackoverflow.com/questions/tagged/perfect" target="_blank">
-        <img src="http://www.perfect.org/github/perfect_gh_button_2_SO.jpg" alt="Stack Overflow" />
-    </a>  
-    <a href="https://twitter.com/perfectlysoft" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_3_twit.jpg" alt="Follow Perfect on Twitter" />
-    </a>  
-    <a href="http://perfect.ly" target="_blank">
-        <img src="http://www.perfect.org/github/Perfect_GH_button_4_slack.jpg" alt="Join the Perfect Slack" />
-    </a>
-</p>
+This project provides access to FileMaker Server databases using the classic XML Custom Web Publishing (CWP) interface (the `fmresultset` grammar) — listing databases, layouts, and fields, and running `find`/`findAll` queries. It was written to be stand-alone and does not need to be run as part of a Perfect server application.
 
-<p align="center">
-    <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Swift-4.1-orange.svg?style=flat" alt="Swift 4.1">
-    </a>
-    <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Platforms-OS%20X%20%7C%20Linux%20-lightgray.svg?style=flat" alt="Platforms OS X | Linux">
-    </a>
-    <a href="http://perfect.org/licensing.html" target="_blank">
-        <img src="https://img.shields.io/badge/License-Apache-lightgrey.svg?style=flat" alt="License Apache">
-    </a>
-    <a href="http://twitter.com/PerfectlySoft" target="_blank">
-        <img src="https://img.shields.io/badge/Twitter-@PerfectlySoft-blue.svg?style=flat" alt="PerfectlySoft Twitter">
-    </a>
-    <a href="http://perfect.ly" target="_blank">
-        <img src="http://perfect.ly/badge.svg" alt="Slack Status">
-    </a>
-</p>
+**Modernized for Swift 6.** A real query-injection gap in the original percent-encoder was found
+and fixed during modernization — see the security note in the changelog/commit history if you're
+evaluating this as a trust boundary.
 
-This project provides access to FileMaker Server databases using the XML Web publishing interface.
+The pre-Swift-6 version of this package is preserved on the [`legacy`](../../tree/legacy) branch.
 
-This package builds with Swift Package Manager and is part of the [Perfect](https://github.com/PerfectlySoft/Perfect) project. It was written to be stand-alone and so does not need to be run as part of a Perfect server application.
+## Requirements
 
-Ensure you have installed and activated the latest Swift 4.1.1 tool chain.
+- Swift tools version **6.2** (see `Package.swift`'s `swift-tools-version`)
+- **macOS 12** or later — this is the only platform formally declared in `Package.swift`'s `platforms` array
 
-## Linux Build Notes
-
-Ensure that you have installed curl and libxml2.
-
-```
-sudo apt-get install libcurl4-openssl-dev libxml2-dev
-```
+The source still guards its networking import with `#if canImport(FoundationNetworking)` for portability, but Linux is not currently a declared/supported SPM platform for this package — treat Linux support as unverified rather than assume the old Linux build notes below still apply.
 
 ## Building
 
-Add this project as a dependency in your Package.swift file.
+```swift
+.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", branch: "main")
+```
 
-```
-.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", from: "3.0.0")
-```
+This package's own `Package.swift` resolves its [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) dependency the same way (`.package(url:, branch: "main")`) — no monorepo layout is required to build either repo.
+
+## Dependencies
+
+- [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) — used for parsing the `fmresultset` and `FMPXMLLAYOUT` XML responses.
+
+Networking is done directly via Foundation's `URLSession`/`URLRequest` — there is **no Perfect-CURL dependency** and no libcurl requirement. Query requests are deliberately sent as `POST` rather than `GET`, to avoid credential-adjacent query values leaking into URL logs, with a default 5-second request timeout and forced connection closure — added specifically to prevent FileMaker Web Publishing Engine session buildup under crawl-style load.
+
+Note: the classic `FMPXMLLAYOUT` grammar (full layout/value-list introspection beyond field names) is deliberately unimplemented, matching the original PerfectlySoft library's behavior — this is a known, intentional gap rather than an oversight.
 
 ## Examples
 
 To utilize this package, ```import PerfectFileMaker```.
+
+The public API is fully `async`/`await` — there are no completion-handler closures.
 
 ### List Available Databases
 
@@ -71,19 +49,15 @@ This snippet connects to the server and has it list all of the hosted databases.
 
 ```swift
 let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
-fms.databaseNames {
-	result in
-	do {
-		// Get the list of names
-		let names = try result()
-		for name in names {
-			print("Got a database name \(name)")
-		}
-	} catch FMPError.serverError(let code, let msg) {
-		print("Got a server error \(code) \(msg)")
-	} catch let e {
-		print("Got an unexpected error \(e)")
+do {
+	let names = try await fms.databaseNames()
+	for name in names {
+		print("Got a database name \(name)")
 	}
+} catch FMPError.serverError(let code, let msg) {
+	print("Got a server error \(code) \(msg)")
+} catch let e {
+	print("Got an unexpected error \(e)")
 }
 ```
 
@@ -93,14 +67,13 @@ List all of the layouts in a particular database.
 
 ```swift
 let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
-fms.layoutNames(database: "FMServer_Sample") {
-	result in
-	guard let names = try? result() else {
-		return // got an error
-	}
+do {
+	let names = try await fms.layoutNames(database: "FMServer_Sample")
 	for name in names {
 		print("Got a layout name \(name)")
 	}
+} catch let e {
+	print("Got an unexpected error \(e)")
 }
 ```
 
@@ -110,15 +83,14 @@ List all of the field names on a particular layout.
 
 ```swift
 let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
-fms.layoutInfo(database: "FMServer_Sample", layout: "Task Details") {
-	result in
-	guard let layoutInfo = try? result() else {
-		return // error
-	}
+do {
+	let layoutInfo = try await fms.layoutInfo(database: "FMServer_Sample", layout: "Task Details")
 	let fieldsByName = layoutInfo.fieldsByName
 	for (name, value) in fieldsByName {
 		print("Field \(name) = \(value)")
 	}
+} catch let e {
+	print("Got an unexpected error \(e)")
 }
 ```
 
@@ -129,11 +101,8 @@ Perform a findall and print all field names and values.
 ```swift
 let query = FMPQuery(database: "FMServer_Sample", layout: "Task Details", action: .findAll)
 let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
-fms.query(query) {
-	result in
-	guard let resultSet = try? result() else {
-		return // error
-	}
+do {
+	let resultSet = try await fms.query(query)
 	let fields = resultSet.layoutInfo.fields
 	let records = resultSet.records
 	let recordCount = records.count
@@ -161,6 +130,8 @@ fms.query(query) {
 			}
 		}
 	}
+} catch let e {
+	print("Got an unexpected error \(e)")
 }
 ```
 
@@ -184,11 +155,8 @@ let qfields = [FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: 
 let query = FMPQuery(database: "FMServer_Sample", layout: "Task Details", action: .find)
 	.queryFields(qfields)
 let fms = FileMakerServer(host: testHost, port: testPort, userName: testUserName, password: testPassword)
-fms.query(query) {
-	result in
-	guard let resultSet = try? result() else {
-		return // error
-	}
+do {
+	let resultSet = try await fms.query(query)
 	let fields = resultSet.layoutInfo.fields
 	let records = resultSet.records
 	let recordCount = records.count
@@ -200,7 +168,7 @@ fms.query(query) {
 				let fieldName = def.name
 				if let fnd = rec.elements[fieldName], case .field(_, let fieldValue) = fnd {
 					print("Normal field: \(fieldName) = \(fieldValue)")
-					if name == "Status", case .text(let tstStr) = fieldValue {
+					if fieldName == "Status", case .text(let tstStr) = fieldValue {
 						print("Status == \(tstStr)")
 					}
 				}
@@ -219,5 +187,7 @@ fms.query(query) {
 			}
 		}
 	}
+} catch let e {
+	print("Got an unexpected error \(e)")
 }
 ```

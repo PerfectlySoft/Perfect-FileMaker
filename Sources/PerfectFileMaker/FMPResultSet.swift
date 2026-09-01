@@ -35,7 +35,7 @@ let fmrsRelatedSet = "relatedset"
 let fmrsData = "\(fmrs):data/text()"
 
 /// A returned FileMaker field value.
-public enum FMPFieldValue: CustomStringConvertible {
+public enum FMPFieldValue: CustomStringConvertible, Sendable {
 	/// A text field.
 	case text(String)
 	/// A numeric field.
@@ -79,7 +79,7 @@ public enum FMPFieldValue: CustomStringConvertible {
 }
 
 /// Meta-information for a database.
-public struct FMPDatabaseInfo {
+public struct FMPDatabaseInfo: Sendable {
 	/// The date format indicated by the server.
 	public let dateFormat: String
 	/// The time format indicated by the server.
@@ -98,9 +98,9 @@ public struct FMPDatabaseInfo {
 }
 
 /// An individual result set record.
-public struct FMPRecord {
+public struct FMPRecord: Sendable {
 	/// A type of record item.
-	public enum RecordItem {
+	public enum RecordItem: Sendable {
 		/// An individual field.
 		case field(String, FMPFieldValue)
 		/// A related set containing a list of related records.
@@ -171,7 +171,7 @@ public struct FMPRecord {
 }
 
 /// The result set produced by a query.
-public struct FMPResultSet {
+public struct FMPResultSet: Sendable {
 	/// Database meta-info.
 	public let databaseInfo: FMPDatabaseInfo
 	/// Layout meta-info.
