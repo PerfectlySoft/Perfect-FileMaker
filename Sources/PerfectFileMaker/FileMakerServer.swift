@@ -60,7 +60,11 @@ public struct FileMakerServer: Sendable {
 	/// relying on a magic port number; see `effectiveUseTLS`.
 	let useTLS: Bool?
 	let urlSession: URLSession
-	/// Applied to every request as its `URLRequest.timeoutInterval`. No prior
+	/// Applied to every request as its `URLRequest.timeoutInterval`. That is
+	/// an inactivity timeout, not a limit on the whole request: it fires
+	/// when no data arrives for this long (in practice, while waiting for
+	/// the first byte of the response), and a response that keeps
+	/// trickling in can take longer in total. No prior
 	/// version of this library set an explicit request timeout at all —
 	/// every outbound request silently fell back to `URLSession`'s own
 	/// default (`timeoutIntervalForRequest`, 60 seconds). Live-confirmed
@@ -73,7 +77,7 @@ public struct FileMakerServer: Sendable {
 	/// rest of that 60 seconds, holding its WPE session open the whole
 	/// time. 5 seconds is a deliberately short default that fails fast
 	/// for ordinary lookups. The public methods take no per-call timeout:
-	/// for calls with a real reason to expect a slower response (a
+	/// for calls with a real reason to expect a slow first byte (a
 	/// large-dataset query, or one that triggers a FileMaker script), make
 	/// a second `FileMakerServer` value with a longer `defaultTimeout` and
 	/// use it for just those calls, rather than raising this default for
@@ -144,8 +148,11 @@ public struct FileMakerServer: Sendable {
 		// (not a tight request loop that benefits from reuse), those
 		// accumulate as connections FileMaker Server's own admin console
 		// shows as still "open" long after their one request finished.
-		// Forcing closure here trades a per-request TCP handshake for
-		// guaranteed cleanup — the right tradeoff for this workload.
+		// `Connection: close` asks the server to close the connection
+		// after its response (URLSession doesn't close the socket itself),
+		// trading a per-request TCP handshake for cleanup that doesn't
+		// depend on keep-alive timers — the right tradeoff for this
+		// workload.
 		request.setValue("close", forHTTPHeaderField: "Connection")
 		if !userName.isEmpty {
 			if !effectiveUseTLS {

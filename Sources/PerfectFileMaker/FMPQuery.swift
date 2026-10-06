@@ -23,7 +23,7 @@ import Foundation
 /// allow-list (`A-Za-z0-9-._~`) — deliberately narrower than
 /// `Foundation`'s `CharacterSet.urlQueryAllowed` (which lets `!$&'()*+,;=`
 /// through untouched) and than the original `PerfectLib.stringByEncodingURL`
-/// this replaces (which left `& = ! ( ) * ;` unescaped). FileMaker's
+/// this replaces (which left `= * & ! ( ) ; ' , / ? @` unescaped). FileMaker's
 /// classic XML Web Publishing query grammar treats exactly those
 /// characters as structurally significant (`-q1=Name&-q1.value=Value`,
 /// compound queries like `-query=(q1,q2);(q3)`) — an unescaped `&` in a
@@ -145,16 +145,16 @@ public struct FMPQueryField: @unchecked Sendable {
 		self.op = op
 	}
 	
-	/// The operator token is always-ASCII, fixed FileMaker query syntax —
-	/// never user data — and stays unencoded. Only the actual comparison
-	/// value is percent-encoded, and only once: encoding the operator
-	/// characters themselves (`> < = *`) here and relying on the call
-	/// site to encode this whole string a second time was the original
-	/// bug (see `FMPQuery.swift`'s `compoundFieldsString`) — under
-	/// `PerfectLib`'s old encoder, `.greaterThan`/`.lessThanEqual`/etc.
-	/// (which embed `<`/`>`/`=`, characters that encoder did escape)
-	/// produced mangled, broken queries. Never feed operator syntax into
-	/// the encoder.
+	/// The operator token is fixed ASCII FileMaker query syntax — never
+	/// user data — and stays unencoded; only the comparison value is
+	/// percent-encoded. 3.0.1 instead ran PerfectLib's `stringByEncodingURL`
+	/// once over operator and value together. That left `=` and `*`
+	/// literal and encoded only `<`/`>` (equivalent once the server
+	/// form-decodes the body), but it also left `&` in the value literal,
+	/// which let a value add query directives. Encoding the value on its
+	/// own with `fmpEscaped` closes that. The operator is left out of the
+	/// encoder only to keep the query string readable; encoding it would
+	/// decode to the same thing.
 	var valueWithOp: String {
 		let encodedValue = "\(value)".fmpEscaped
 		switch op {
