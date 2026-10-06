@@ -415,20 +415,20 @@ struct MockedFileMakerServerTests {
 
 // MARK: - Live FileMaker Server integration tests (FILEMAKER_TESTS=1)
 
-@Test func liveDatabaseNamesIncludesSampleDatabase() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveDatabaseNamesIncludesSampleDatabase() async throws {
     let names = try await liveServer().databaseNames()
     #expect(names.contains(sampleDB))
 }
 
-@Test func liveLayoutNamesIncludesSampleLayout() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveLayoutNamesIncludesSampleLayout() async throws {
     let names = try await liveServer().layoutNames(database: sampleDB)
     #expect(names.contains(sampleLayout))
 }
 
-@Test func liveLayoutInfoIncludesExpectedFields() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveLayoutInfoIncludesExpectedFields() async throws {
     let expectedNames = ["Status", "Category", "Description", "Task", "Related | Sort Selection",
                           "Days Till Due", "Due Date", "Assignees::Name", "Assignees::Phone",
                           "Assignees::Email", "Attachments::Attachment | Container",
@@ -441,8 +441,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveQuerySkipMaxReturnsExpectedRecordCounts() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQuerySkipMaxReturnsExpectedRecordCounts() async throws {
     let fms = liveServer()
 
     let zeroQuery = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll).maxRecords(0)
@@ -454,8 +454,8 @@ struct MockedFileMakerServerTests {
     #expect(twoResult.records.count == 2)
 }
 
-@Test func liveQueryFindAllReturnsRecordsMatchingLayout() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQueryFindAllReturnsRecordsMatchingLayout() async throws {
     let fms = liveServer()
     let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll)
     let resultSet = try await fms.query(query)
@@ -495,8 +495,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveQueryFindInProgressReturnsMatchingStatus() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQueryFindInProgressReturnsMatchingStatus() async throws {
     let qfields = [FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: "In Progress")])]
     let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .find).queryFields(qfields)
     let resultSet = try await liveServer().query(query)
@@ -511,8 +511,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveNewFindAndDeleteRoundTrip() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveNewFindAndDeleteRoundTrip() async throws {
     let fms = liveServer()
     let unique = Int(Date().timeIntervalSince1970)
     let task = "Add a new record @ \(unique) \u{2603}\u{FE0F}"

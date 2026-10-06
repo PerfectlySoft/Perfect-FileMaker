@@ -60,8 +60,7 @@ public struct FileMakerServer: Sendable {
 	/// relying on a magic port number; see `effectiveUseTLS`.
 	let useTLS: Bool?
 	let urlSession: URLSession
-	/// Applied to every request whose call site doesn't pass its own
-	/// `timeout:` override (see each public method below). No prior
+	/// Applied to every request as its `URLRequest.timeoutInterval`. No prior
 	/// version of this library set an explicit request timeout at all —
 	/// every outbound request silently fell back to `URLSession`'s own
 	/// default (`timeoutIntervalForRequest`, 60 seconds). Live-confirmed
@@ -73,10 +72,12 @@ public struct FileMakerServer: Sendable {
 	/// request kept running in the background regardless, for up to the
 	/// rest of that 60 seconds, holding its WPE session open the whole
 	/// time. 5 seconds is a deliberately short default that fails fast
-	/// for ordinary lookups; call sites with a real reason to expect a
-	/// slower response (a large-dataset query, or one that triggers a
-	/// FileMaker script) should pass an explicit longer `timeout:` to
-	/// the specific call that needs it, not raise this default globally.
+	/// for ordinary lookups. The public methods take no per-call timeout:
+	/// for calls with a real reason to expect a slower response (a
+	/// large-dataset query, or one that triggers a FileMaker script), make
+	/// a second `FileMakerServer` value with a longer `defaultTimeout` and
+	/// use it for just those calls, rather than raising this default for
+	/// everything.
 	public let defaultTimeout: TimeInterval
 
 	/// Initialize using a host, port, username and password.
