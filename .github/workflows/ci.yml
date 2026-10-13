@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# There is no FileMaker Server service container, so CI runs the tests that don't need a
+# server (query building, and request/response handling against a mocked URLSession). The
+# live-server tests skip unless FILEMAKER_TESTS=1.
+
+jobs:
+  linux:
+    name: Linux (Swift ${{ matrix.swift }}, ${{ matrix.configuration }})
+    runs-on: ubuntu-24.04
+    container: swift:${{ matrix.swift }}-noble
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported Swift (swift-tools-version 6.2) and the newest.
+        swift: ["6.2", "6.4"]
+        configuration: [debug, release]
+    steps:
+      - uses: actions/checkout@v7
+
+      # Perfect-XML's libxml2 system-library target finds libxml2 through pkg-config on Linux.
+      - name: Install libxml2
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends pkg-config libxml2-dev
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build (warnings are errors)
+        run: |
+          flags="-c ${{ matrix.configuration }} -Xswiftc -warnings-as-errors"
+          # @testable imports need testing enabled in an optimized build.
+          [ "${{ matrix.configuration }}" = release ] && flags="$flags -Xswiftc -enable-testing"
+          echo "FLAGS=$flags" >> "$GITHUB_ENV"
+          swift build --build-tests $flags
+
+      - name: Test
+        run: swift test $FLAGS
+
+  macos:
+    # libxml2 comes from the macOS SDK; no Homebrew packages are needed.
+    name: macOS (Xcode ${{ matrix.xcode }}, ${{ matrix.configuration }})
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Xcode with Swift 6.2, and the runner's default.
+        xcode: ["26.0.1", "26.6"]
+        configuration: [debug, release]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+          swift --version
+
+      - name: Build (warnings are errors)
+        run: |
+          flags="-c ${{ matrix.configuration }} -Xswiftc -warnings-as-errors"
+          # @testable imports need testing enabled in an optimized build.
+          [ "${{ matrix.configuration }}" = release ] && flags="$flags -Xswiftc -enable-testing"
+          echo "FLAGS=$flags" >> "$GITHUB_ENV"
+          swift build --build-tests $flags
+
+      - name: Test
+        run: swift test $FLAGS
+
+  ios:
+    name: iOS Simulator
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+
+      # On a fresh runner the simulator service can start late, and xcodebuild then lists no
+      # simulators at all ("Unable to find a device"). Wait until it offers the one we test on.
+      # Listing devices with simctl makes the service refresh its runtimes
+      # (actions/runner-images#12948).
+      - name: Wait for the simulator
+        run: |
+          deadline=$((SECONDS + 300))
+          while [ $SECONDS -lt $deadline ]; do
+            xcrun simctl list devices available > /dev/null 2>&1 || true
+            if destinations=$(xcodebuild -showdestinations -scheme PerfectFileMaker) \
+                && grep -q "name:iPhone 17 }" <<< "$destinations"; then
+              exit 0
+            fi
+            echo "No iPhone 17 simulator yet; retrying in 5 seconds"
+            sleep 5
+          done
+          echo "No iPhone 17 simulator after 5 minutes"
+          xcrun simctl list devices available
+          exit 1
+
+      # The library builds at the package's iOS 15 deployment target, so this also catches
+      # library APIs that need a newer iOS. No SWIFT_TREAT_WARNINGS_AS_ERRORS here: it
+      # conflicts with Xcode's warning suppression for remote package dependencies
+      # (Perfect-XML). The SwiftPM jobs above check warnings.
+      - name: Test
+        run: |
+          xcodebuild test -scheme PerfectFileMaker \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination-timeout 120

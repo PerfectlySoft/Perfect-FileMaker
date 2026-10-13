@@ -2,40 +2,41 @@
 
 <p align="center">
     <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
-    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B%20%7C%20iOS%2015%2B%20%7C%20Linux-lightgray.svg?style=flat" alt="Platforms macOS 12+ | iOS 15+ | Linux">
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0"></a>
 </p>
 
-This project provides access to FileMaker Server databases using the classic XML Custom Web Publishing (CWP) interface (the `fmresultset` grammar) — listing databases, layouts, and fields, and running `find`/`findAll` queries. It was written to be stand-alone and does not need to be run as part of a Perfect server application.
+This project provides access to FileMaker Server databases using the classic XML Custom Web Publishing (CWP) interface (the `fmresultset` grammar) — listing databases, layouts, and fields; running `find`, `findAll` and `findAny` queries; and creating, editing, deleting and duplicating records (`.new`, `.edit`, `.delete`, `.duplicate`). It was written to be stand-alone and does not need to be run as part of a Perfect server application.
 
 **Modernized for Swift 6.** A real query-injection gap in the original percent-encoder was found
-and fixed during modernization — see the security note in the changelog/commit history if you're
-evaluating this as a trust boundary.
+and fixed during modernization: search values and names are now percent-encoded with a strict
+allow-list, so a value containing `&` or `=` can't add query directives. See the
+[4.0.0 release notes](../../releases/tag/4.0.0) if you're evaluating this as a trust boundary.
 
 The pre-Swift-6 version of this package is preserved on the [`legacy`](../../tree/legacy) branch.
 
 ## Requirements
 
-- Swift tools version **6.2** (see `Package.swift`'s `swift-tools-version`)
-- **macOS 12** or later — this is the only platform formally declared in `Package.swift`'s `platforms` array
+- Swift **6.2** or newer (`swift-tools-version: 6.2`)
+- **macOS 12** or later, **iOS 15** or later, or **Linux**. On Linux, install `libxml2-dev` and `pkg-config` for Perfect-XML (`sudo apt-get install libxml2-dev pkg-config`); on macOS and iOS the SDK's libxml2 is used and nothing extra is needed.
 
-The source still guards its networking import with `#if canImport(FoundationNetworking)` for portability, but Linux is not currently a declared/supported SPM platform for this package — treat Linux support as unverified rather than assume the old Linux build notes below still apply.
+CI builds and tests on Linux (Swift 6.2 and 6.4) and macOS (Xcode 26.0.1 and 26.6), in debug and release with warnings treated as errors, and on the iOS Simulator. There is no FileMaker Server in CI, so it runs the tests that don't need one; see [Testing](#testing).
 
 ## Building
 
 ```swift
-.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", branch: "main")
+.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker.git", from: "4.0.0")
 ```
 
-This package's own `Package.swift` resolves its [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) dependency the same way (`.package(url:, branch: "main")`) — no monorepo layout is required to build either repo.
+and add `.product(name: "PerfectFileMaker", package: "Perfect-FileMaker")` to your target's dependencies.
 
 ## Dependencies
 
-- [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) — used for parsing the `fmresultset` and `FMPXMLLAYOUT` XML responses.
+- [Perfect-XML](https://github.com/PerfectlySoft/Perfect-XML) 4.0.0 or later — used to parse the `fmresultset` XML responses. Every request, including `layoutInfo` (sent as `-view`), asks for the `fmresultset` grammar.
 
-Networking is done directly via Foundation's `URLSession`/`URLRequest` — there is **no Perfect-CURL dependency** and no libcurl requirement. Query requests are deliberately sent as `POST` rather than `GET`, to avoid credential-adjacent query values leaking into URL logs, with a default 5-second request timeout and forced connection closure — added specifically to prevent FileMaker Web Publishing Engine session buildup under crawl-style load.
+Networking is done directly via Foundation's `URLSession`/`URLRequest` — there is **no Perfect-CURL dependency** and no libcurl requirement of its own (on Linux, FoundationNetworking itself links libcurl, which the official Swift images already include). Query requests are deliberately sent as `POST` rather than `GET`, to avoid credential-adjacent query values leaking into URL logs, with a default 5-second inactivity timeout (`URLRequest.timeoutInterval`: it fires when no data arrives for 5 seconds, in practice while waiting for the first byte, not after 5 seconds in total) and a `Connection: close` header asking the server to close each connection after its response. Both were added to stop FileMaker Web Publishing Engine sessions building up under crawl-style load.
 
-Note: the classic `FMPXMLLAYOUT` grammar (full layout/value-list introspection beyond field names) is deliberately unimplemented, matching the original PerfectlySoft library's behavior — this is a known, intentional gap rather than an oversight.
+Note: only the `fmresultset` grammar is implemented. `layoutInfo` reads the field names, field result types and portal (related-set) fields from the `fmresultset` metadata. The `FMPXMLLAYOUT` grammar (value lists and other layout details) and the `FMPXMLRESULT` grammar are deliberately unimplemented, matching the original PerfectlySoft library.
 
 ## Examples
 
@@ -191,3 +192,23 @@ do {
 	print("Got an unexpected error \(e)")
 }
 ```
+
+## Migrating from 3.x
+
+4.0.0 is a major release; the [release notes](../../releases/tag/4.0.0) list every change. The ones most likely to need attention:
+
+* **Toolchain and platforms.** Swift tools 6.2 is required, and the package declares macOS 12+ and iOS 15+ (3.x declared no platforms). Linux builds need `libxml2-dev` and `pkg-config`. Perfect-CURL is no longer used (on Linux, FoundationNetworking still links libcurl itself).
+* **`async`/`await` instead of callbacks.** `databaseNames()`, `layoutNames(database:)`, `layoutInfo(database:layout:)` and `query(_:)` are `async throws` and return their result directly. Replace `fms.query(q) { response in let rs = try response() ... }` with `let rs = try await fms.query(q)`.
+* **Perfect-CURL is gone** (and with it PerfectLib, which came in through Perfect-CURL). Requests use Foundation's `URLSession`. `FileMakerServer.init` gains optional `useTLS:`, `urlSession:` and `defaultTimeout:` parameters; existing four-argument calls still compile.
+* **5-second inactivity timeout.** A request now fails if no data arrives for 5 seconds (in practice, if the first byte takes longer); a response that keeps arriving can take longer in total. 3.x set no timeout of its own. Pass a longer `defaultTimeout:` for servers, large finds or scripted queries that are slow to start responding.
+* **Stricter escaping.** Names and values are percent-encoded except for `A-Z a-z 0-9 - . _ ~`, which closes a query-injection hole. 3.x left `= * & ! ( ) ; ' , / ? @` unescaped, so a value containing `&` could add query directives. Operators are unchanged in effect: 4.0 sends `<` and `>` literally where 3.x encoded them, which decodes to the same thing.
+* **Plain-HTTP credentials are logged.** Sending a user name and password without TLS (`useTLS` unset and port not 443) still works but writes a warning to standard error.
+* **`Sendable`.** The public types are `Sendable`. `FMPQueryField` is `@unchecked Sendable` because its `value` is `Any`: pass only strings and numbers.
+
+## Testing
+
+```
+swift test
+```
+
+The query-building and request/response tests run anywhere; the request tests use a mocked `URLSession`. The live tests run against the `FMServer_Sample` database on a real FileMaker Server and are skipped unless `FILEMAKER_TESTS=1` is set, with `FILEMAKER_HOST`, `FILEMAKER_PORT`, `FILEMAKER_USER` and `FILEMAKER_PASSWORD` describing the server.

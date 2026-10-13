@@ -34,7 +34,7 @@ private func liveServer() -> FileMakerServer {
 // Literal expected strings reflect this modernization's stricter
 // `String.fmpEscaped` encoder (alnum + `-._~` only) — deliberately
 // narrower than the original `PerfectLib.stringByEncodingURL`, which left
-// `& = ! ( ) * ; @` unescaped. `(`/`)` (in `-query=(q1)`) and `@` (in a
+// `= * & ! ( ) ; ' , / ? @` unescaped. `(`/`)` (in `-query=(q1)`) and `@` (in a
 // literal task name below) now percent-encode to `%28`/`%29`/`%40` where
 // the old fixtures showed them literal — see FMPQuery.swift's doc
 // comments for why over-encoding here is safe, not a regression.
@@ -60,16 +60,16 @@ private func liveServer() -> FileMakerServer {
     #expect("\(query)" == "-db=FMServer_Sample&-lay=Task%20Details&Task=Add%20a%20new%20record%20%40%20123%20%E2%98%83%EF%B8%8F&Status=In%20Progress&-new")
 }
 
-// MARK: - Operator encoding (regression for the valueWithOp bug)
+// MARK: - Operator encoding
 //
-// Under the original PerfectLib encoder, `<`/`>` (used by
-// .greaterThan/.lessThan/.greaterThanEqual/.lessThanEqual) WERE escaped,
-// but only .equal/.beginsWith had test coverage — these operators were
-// silently broken. Confirms the fixed `valueWithOp` (operator token
-// unencoded, value encoded standalone) now produces well-formed,
-// unmangled query strings for every operator.
+// `valueWithOp` keeps the operator token literal and encodes only the
+// value. (3.0.1 encoded operator and value together with PerfectLib's
+// encoder, which encoded `<`/`>` and left `=`/`*` literal; after the
+// server form-decodes the body that is equivalent, so the old operators
+// worked. What it got wrong was leaving `&` in values literal.) These pin
+// the query string for every operator.
 
-@Test func comparisonOperatorsProduceUnmangledQueryStrings() {
+@Test func comparisonOperatorsAreSentLiterallyWithEncodedValues() {
     let cases: [(FMPFieldOp, String, String)] = [
         (.equal, "5", "==5"),
         (.contains, "abc", "==*abc*"),
@@ -172,11 +172,43 @@ private let sampleResultSetXML = """
 <product build="1" name="FileMaker" version="1"/>
 <datasource database="TestDB" date-format="MM/dd/yyyy" layout="TestLayout" table="TestTable" time-format="HH:mm:ss" timestamp-format="MM/dd/yyyy HH:mm:ss" total-count="1"/>
 <metadata>
-<field-definition name="Status" type="text"/>
+<field-definition name="Status" result="text" type="normal"/>
 </metadata>
 <resultset count="1" fetch-size="1">
 <record record-id="42" mod-id="0">
 <field name="Status"><data>In Progress</data></field>
+</record>
+</resultset>
+</fmresultset>
+"""
+
+/// A `-view`/find response shaped like FileMaker Server's: `result=` carries
+/// the field's data type (`type=` is normal/calculation/summary), and a
+/// portal appears as a `relatedset-definition` plus `relatedset` rows.
+private let layoutResultSetXML = """
+<?xml version="1.0" encoding="UTF-8"?>
+<fmresultset xmlns="http://www.filemaker.com/xml/fmresultset" version="1.0">
+<error code="0"/>
+<product build="1" name="FileMaker Web Publishing Engine" version="1"/>
+<datasource database="TestDB" date-format="MM/dd/yyyy" layout="Task Details" table="Tasks" time-format="HH:mm:ss" timestamp-format="MM/dd/yyyy HH:mm:ss" total-count="1"/>
+<metadata>
+<field-definition auto-enter="no" global="no" max-repeat="1" name="Count" not-empty="no" numeric-only="no" result="number" time-of-day="no" type="normal"/>
+<field-definition auto-enter="no" global="no" max-repeat="1" name="Due" not-empty="no" numeric-only="no" result="date" time-of-day="no" type="normal"/>
+<field-definition auto-enter="no" global="no" max-repeat="1" name="Status" not-empty="no" numeric-only="no" result="text" time-of-day="no" type="calculation"/>
+<relatedset-definition table="Items">
+<field-definition auto-enter="no" global="no" max-repeat="1" name="Items::Name" not-empty="no" numeric-only="no" result="text" time-of-day="no" type="normal"/>
+<field-definition auto-enter="no" global="no" max-repeat="1" name="Items::Qty" not-empty="no" numeric-only="no" result="number" time-of-day="no" type="normal"/>
+</relatedset-definition>
+</metadata>
+<resultset count="1" fetch-size="1">
+<record mod-id="3" record-id="7">
+<field name="Count"><data>12</data></field>
+<field name="Due"><data>10/06/2026</data></field>
+<field name="Status"><data>Open</data></field>
+<relatedset count="2" table="Items">
+<record mod-id="0" record-id="100"><field name="Items::Name"><data>Bolt</data></field><field name="Items::Qty"><data>4</data></field></record>
+<record mod-id="0" record-id="101"><field name="Items::Name"><data>Nut</data></field><field name="Items::Qty"><data>9</data></field></record>
+</relatedset>
 </record>
 </resultset>
 </fmresultset>
@@ -228,7 +260,7 @@ struct MockedFileMakerServerTests {
         <fmresultset xmlns="http://www.filemaker.com/xml/fmresultset" version="1.0">
         <error code="0"/>
         <datasource database="DBNames" date-format="MM/dd/yyyy" layout="" table="" time-format="HH:mm:ss" timestamp-format="MM/dd/yyyy HH:mm:ss" total-count="1"/>
-        <metadata><field-definition name="DATABASE_NAME" type="text"/></metadata>
+        <metadata><field-definition name="DATABASE_NAME" result="text" type="normal"/></metadata>
         <resultset count="1" fetch-size="1">
         <record record-id="1" mod-id="0"><field name="DATABASE_NAME"><data>\(sampleDB)</data></field></record>
         </resultset>
@@ -237,6 +269,110 @@ struct MockedFileMakerServerTests {
         let server = mockServer(handler: okResponse(xml))
         let names = try await server.databaseNames()
         #expect(names == [sampleDB])
+    }
+
+    @Test func layoutNamesParsesLayoutNameFieldsAndSendsLayoutnames() async throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <fmresultset xmlns="http://www.filemaker.com/xml/fmresultset" version="1.0">
+        <error code="0"/>
+        <datasource database="TestDB" date-format="MM/dd/yyyy" layout="" table="" time-format="HH:mm:ss" timestamp-format="MM/dd/yyyy HH:mm:ss" total-count="2"/>
+        <metadata><field-definition name="LAYOUT_NAME" result="text" type="normal"/></metadata>
+        <resultset count="2" fetch-size="2">
+        <record record-id="1" mod-id="0"><field name="LAYOUT_NAME"><data>Task Details</data></field></record>
+        <record record-id="2" mod-id="0"><field name="LAYOUT_NAME"><data>Tasks &amp; Notes</data></field></record>
+        </resultset>
+        </fmresultset>
+        """
+        let server = mockServer(handler: okResponse(xml))
+        let names = try await server.layoutNames(database: "Test DB")
+        #expect(names == ["Task Details", "Tasks & Notes"])
+        let body = String(data: MockURLProtocol.lastBody ?? Data(), encoding: .utf8)
+        #expect(body == "-db=Test%20DB&-layoutnames")
+    }
+
+    @Test func layoutInfoReadsResultTypesAndPortalDefinitions() async throws {
+        let server = mockServer(handler: okResponse(layoutResultSetXML))
+        let info = try await server.layoutInfo(database: "TestDB", layout: "Task Details")
+        let body = String(data: MockURLProtocol.lastBody ?? Data(), encoding: .utf8)
+        #expect(body == "-db=TestDB&-lay=Task%20Details&-view")
+
+        #expect(info.fields.count == 4)
+        guard case .fieldDefinition(let count) = info.fields[0] else {
+            Issue.record("Expected a field definition first")
+            return
+        }
+        #expect(count.name == "Count")
+        #expect(count.type == .number)
+        guard case .relatedSetDefinition(let table, let portalFields) = info.fields[3] else {
+            Issue.record("Expected a related-set definition last")
+            return
+        }
+        #expect(table == "Items")
+        #expect(portalFields.map(\.name) == ["Items::Name", "Items::Qty"])
+        #expect(portalFields.map(\.type) == [.text, .number])
+
+        #expect(info.fieldsByName["Count"] == .number)
+        #expect(info.fieldsByName["Due"] == .date)
+        #expect(info.fieldsByName["Status"] == .text)
+        #expect(info.fieldsByName["Items::Qty"] == .number)
+    }
+
+    @Test func queryTypesFieldValuesAndReadsPortalRecords() async throws {
+        let server = mockServer(handler: okResponse(layoutResultSetXML))
+        let resultSet = try await server.query(FMPQuery(database: "TestDB", layout: "Task Details", action: .findAll))
+        #expect(resultSet.foundCount == 1)
+        let record = try #require(resultSet.records.first)
+        #expect(record.recordId == 7)
+
+        guard case .field(_, .number(let count)) = record.elements["Count"] else {
+            Issue.record("Count should be a number: \(String(describing: record.elements["Count"]))")
+            return
+        }
+        #expect(count == 12)
+        guard case .field(_, .date(let due)) = record.elements["Due"] else {
+            Issue.record("Due should be a date")
+            return
+        }
+        #expect(due == "10/06/2026")
+
+        guard case .relatedSet(let table, let portalRecords) = record.elements["Items"] else {
+            Issue.record("Expected the Items portal")
+            return
+        }
+        #expect(table == "Items")
+        #expect(portalRecords.map(\.recordId) == [100, 101])
+        guard case .field(_, .text(let name)) = portalRecords[0].elements["Items::Name"],
+              case .field(_, .number(let qty)) = portalRecords[0].elements["Items::Qty"] else {
+            Issue.record("Unexpected portal row: \(portalRecords[0].elements)")
+            return
+        }
+        #expect(name == "Bolt")
+        #expect(qty == 4)
+    }
+
+    @Test func noRecordsMatchError401Throws() async {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <fmresultset xmlns="http://www.filemaker.com/xml/fmresultset" version="1.0">
+        <error code="401"/>
+        <product build="1" name="FileMaker Web Publishing Engine" version="1"/>
+        <datasource database="TestDB" date-format="MM/dd/yyyy" layout="Task Details" table="Tasks" time-format="HH:mm:ss" timestamp-format="MM/dd/yyyy HH:mm:ss" total-count="3"/>
+        <metadata><field-definition name="Status" result="text" type="normal"/></metadata>
+        <resultset count="0" fetch-size="0"/>
+        </fmresultset>
+        """
+        let server = mockServer(handler: okResponse(xml))
+        let query = FMPQuery(database: "TestDB", layout: "Task Details", action: .find)
+            .queryFields([FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: "Nothing")])])
+        do {
+            _ = try await server.query(query)
+            Issue.record("Expected FMPError.serverError(401, ...)")
+        } catch FMPError.serverError(let code, _) {
+            #expect(code == 401)
+        } catch {
+            Issue.record("Unexpected error \(error)")
+        }
     }
 
     @Test func requestSendsBasicAuthHeaderWhenCredentialsProvided() async throws {
@@ -339,8 +475,9 @@ struct MockedFileMakerServerTests {
     }
 
     @Test func requestDefaultsToAFiveSecondTimeoutNotURLSessionsSixty() async throws {
-        // No prior version of this library set an explicit timeout — every
-        // request silently used URLSession's own 60-second default.
+        // Earlier versions set no timeout of their own: 3.0.1 (Perfect-CURL)
+        // set none, and pre-release URLSession builds used URLSession's
+        // 60-second default.
         // Live-confirmed (2026-07-17) as a real contributor to FileMaker
         // Server Web Publishing Engine session buildup under crawl-style
         // load: a calling application reasonably gives up on a slow
@@ -415,20 +552,20 @@ struct MockedFileMakerServerTests {
 
 // MARK: - Live FileMaker Server integration tests (FILEMAKER_TESTS=1)
 
-@Test func liveDatabaseNamesIncludesSampleDatabase() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveDatabaseNamesIncludesSampleDatabase() async throws {
     let names = try await liveServer().databaseNames()
     #expect(names.contains(sampleDB))
 }
 
-@Test func liveLayoutNamesIncludesSampleLayout() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveLayoutNamesIncludesSampleLayout() async throws {
     let names = try await liveServer().layoutNames(database: sampleDB)
     #expect(names.contains(sampleLayout))
 }
 
-@Test func liveLayoutInfoIncludesExpectedFields() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveLayoutInfoIncludesExpectedFields() async throws {
     let expectedNames = ["Status", "Category", "Description", "Task", "Related | Sort Selection",
                           "Days Till Due", "Due Date", "Assignees::Name", "Assignees::Phone",
                           "Assignees::Email", "Attachments::Attachment | Container",
@@ -441,8 +578,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveQuerySkipMaxReturnsExpectedRecordCounts() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQuerySkipMaxReturnsExpectedRecordCounts() async throws {
     let fms = liveServer()
 
     let zeroQuery = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll).maxRecords(0)
@@ -454,8 +591,8 @@ struct MockedFileMakerServerTests {
     #expect(twoResult.records.count == 2)
 }
 
-@Test func liveQueryFindAllReturnsRecordsMatchingLayout() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQueryFindAllReturnsRecordsMatchingLayout() async throws {
     let fms = liveServer()
     let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .findAll)
     let resultSet = try await fms.query(query)
@@ -495,8 +632,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveQueryFindInProgressReturnsMatchingStatus() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveQueryFindInProgressReturnsMatchingStatus() async throws {
     let qfields = [FMPQueryFieldGroup(fields: [FMPQueryField(name: "Status", value: "In Progress")])]
     let query = FMPQuery(database: sampleDB, layout: sampleLayout, action: .find).queryFields(qfields)
     let resultSet = try await liveServer().query(query)
@@ -511,8 +648,8 @@ struct MockedFileMakerServerTests {
     }
 }
 
-@Test func liveNewFindAndDeleteRoundTrip() async throws {
-    guard liveTestsEnabled() else { return }
+@Test(.enabled(if: liveTestsEnabled(), "Set FILEMAKER_TESTS=1 to run against a FileMaker Server"))
+func liveNewFindAndDeleteRoundTrip() async throws {
     let fms = liveServer()
     let unique = Int(Date().timeIntervalSince1970)
     let task = "Add a new record @ \(unique) \u{2603}\u{FE0F}"

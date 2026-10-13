@@ -3,12 +3,12 @@ import PackageDescription
 
 let package = Package(
     name: "PerfectFileMaker",
-    platforms: [.macOS(.v12)],
+    platforms: [.macOS(.v12), .iOS(.v15)],
     products: [
         .library(name: "PerfectFileMaker", targets: ["PerfectFileMaker"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/PerfectlySoft/Perfect-XML.git", branch: "main"),
+        .package(url: "https://github.com/PerfectlySoft/Perfect-XML.git", from: "4.0.0"),
     ],
     targets: [
         .target(
