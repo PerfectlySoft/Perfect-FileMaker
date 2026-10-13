@@ -475,8 +475,9 @@ struct MockedFileMakerServerTests {
     }
 
     @Test func requestDefaultsToAFiveSecondTimeoutNotURLSessionsSixty() async throws {
-        // No prior version of this library set an explicit timeout — every
-        // request silently used URLSession's own 60-second default.
+        // Earlier versions set no timeout of their own: 3.0.1 (Perfect-CURL)
+        // set none, and pre-release URLSession builds used URLSession's
+        // 60-second default.
         // Live-confirmed (2026-07-17) as a real contributor to FileMaker
         // Server Web Publishing Engine session buildup under crawl-style
         // load: a calling application reasonably gives up on a slow

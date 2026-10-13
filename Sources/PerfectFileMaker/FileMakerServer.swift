@@ -64,10 +64,10 @@ public struct FileMakerServer: Sendable {
 	/// an inactivity timeout, not a limit on the whole request: it fires
 	/// when no data arrives for this long (in practice, while waiting for
 	/// the first byte of the response), and a response that keeps
-	/// trickling in can take longer in total. No prior
-	/// version of this library set an explicit request timeout at all —
-	/// every outbound request silently fell back to `URLSession`'s own
-	/// default (`timeoutIntervalForRequest`, 60 seconds). Live-confirmed
+	/// trickling in can take longer in total. Earlier versions set no
+	/// timeout of their own: 3.0.1 (Perfect-CURL) set none at all, and
+	/// pre-release URLSession builds fell back to `URLSession`'s default
+	/// (`timeoutIntervalForRequest`, 60 seconds). Live-confirmed
 	/// (2026-07-17) as a real contributor to FileMaker Server Web
 	/// Publishing Engine session buildup under crawl-style load: a
 	/// calling application can reasonably give up on a slow response
@@ -132,8 +132,9 @@ public struct FileMakerServer: Sendable {
 	func makeRequest(url: URL) -> URLRequest {
 		var request = URLRequest(url: url)
 		request.httpMethod = "POST"
-		// No prior version of this library set an explicit timeout — every
-		// request silently used URLSession's own 60-second default. See
+		// Earlier versions set no timeout of their own (3.0.1 via Perfect-CURL
+		// set none; pre-release URLSession builds used URLSession's 60-second
+		// default). See
 		// `defaultTimeout`'s own doc comment for why that's a real problem
 		// under crawl-style load, not just theoretical.
 		request.timeoutInterval = defaultTimeout
